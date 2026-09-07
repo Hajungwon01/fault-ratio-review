@@ -8,12 +8,31 @@
       "situation": "신호기가 있는 교차로에서 녹색신호로 직진하는 A차량과, 맞은편에서 녹색신호 좌회전(비보호 아님) 또는 적색신호에 좌회전한 B차량이 충돌한 사고",
       "vehicle_a": "녹색 신호 직진",
       "vehicle_b": "녹색(적색)신호위반 좌회전",
-      "base_ratio": { "a": 0, "b": 100 },
+      "base_ratio": {
+        "a": 0,
+        "b": 100
+      },
       "modifiers": [
-        { "side": "A", "condition": "현저한 과실", "adjustment": 10 },
-        { "side": "A", "condition": "중대한 과실", "adjustment": 20 },
-        { "side": "B", "condition": "현저한 과실", "adjustment": 10 },
-        { "side": "B", "condition": "중대한 과실", "adjustment": 20 }
+        {
+          "side": "A",
+          "condition": "현저한 과실",
+          "adjustment": 10
+        },
+        {
+          "side": "A",
+          "condition": "중대한 과실",
+          "adjustment": 20
+        },
+        {
+          "side": "B",
+          "condition": "현저한 과실",
+          "adjustment": 10
+        },
+        {
+          "side": "B",
+          "condition": "중대한 과실",
+          "adjustment": 20
+        }
       ]
     },
     "lane_change": {
@@ -22,16 +41,51 @@
       "situation": "도로를 선행하여 진행하다가 차로를 변경하는 B차량과, 동일 방향에서 후행하여 직진하는 A차량이 충돌한 사고",
       "vehicle_a": "후행 직진",
       "vehicle_b": "선행 진로 변경",
-      "base_ratio": { "a": 30, "b": 70 },
+      "base_ratio": {
+        "a": 30,
+        "b": 70
+      },
       "modifiers": [
-        { "side": "A", "condition": "현저한 과실", "adjustment": 10 },
-        { "side": "A", "condition": "중대한 과실", "adjustment": 20 },
-        { "side": "B", "condition": "진로변경 신호불이행·지연", "adjustment": 10 },
-        { "side": "B", "condition": "버스·다인승전용차로 위반", "adjustment": 10 },
-        { "side": "B", "condition": "진로변경 금지장소", "adjustment": 20 },
-        { "side": "B", "condition": "현저한 과실", "adjustment": 10 },
-        { "side": "B", "condition": "중대한 과실", "adjustment": 20 },
-        { "side": "B", "condition": "고속도로(자동차전용도로 포함) 추월차로로 차로변경", "adjustment": 10 }
+        {
+          "side": "A",
+          "condition": "현저한 과실",
+          "adjustment": 10
+        },
+        {
+          "side": "A",
+          "condition": "중대한 과실",
+          "adjustment": 20
+        },
+        {
+          "side": "B",
+          "condition": "진로변경 신호불이행·지연",
+          "adjustment": 10
+        },
+        {
+          "side": "B",
+          "condition": "버스·다인승전용차로 위반",
+          "adjustment": 10
+        },
+        {
+          "side": "B",
+          "condition": "진로변경 금지장소",
+          "adjustment": 20
+        },
+        {
+          "side": "B",
+          "condition": "현저한 과실",
+          "adjustment": 10
+        },
+        {
+          "side": "B",
+          "condition": "중대한 과실",
+          "adjustment": 20
+        },
+        {
+          "side": "B",
+          "condition": "고속도로(자동차전용도로 포함) 추월차로로 차로변경",
+          "adjustment": 10
+        }
       ]
     },
     "rear_end_collision": {
@@ -40,15 +94,145 @@
       "situation": "도로를 후행하는 A차량(뒤차)이 동일 방향에서 선행하는 B차량(앞차)을 추돌한 사고. 앞차가 이미 발생한 선행사고로 주정차 중이던 경우는 차42-1을 적용하므로 본 표 대상 아님.",
       "vehicle_a": "뒤차(후행) 추돌",
       "vehicle_b": "앞차(선행) 직진",
-      "base_ratio": { "a": 100, "b": 0 },
+      "base_ratio": {
+        "a": 100,
+        "b": 0
+      },
       "modifiers": [
-        { "side": "A", "condition": "주택가·상점가 등", "adjustment": 10 },
-        { "side": "A", "condition": "현저한 과실", "adjustment": 10 },
-        { "side": "A", "condition": "중대한 과실", "adjustment": 20 },
-        { "side": "B", "condition": "저속주행 또는 편도 3차로 이상 도로에서 이유 없는 정지", "adjustment": 10 },
-        { "side": "B", "condition": "이유 없는 급 정지", "adjustment": 30 },
-        { "side": "B", "condition": "제동등화의 고장", "adjustment": 20 }
+        {
+          "side": "A",
+          "condition": "주택가·상점가 등",
+          "adjustment": 10
+        },
+        {
+          "side": "A",
+          "condition": "현저한 과실",
+          "adjustment": 10
+        },
+        {
+          "side": "A",
+          "condition": "중대한 과실",
+          "adjustment": 20
+        },
+        {
+          "side": "B",
+          "condition": "저속주행 또는 편도 3차로 이상 도로에서 이유 없는 정지",
+          "adjustment": 10
+        },
+        {
+          "side": "B",
+          "condition": "이유 없는 급 정지",
+          "adjustment": 30
+        },
+        {
+          "side": "B",
+          "condition": "제동등화의 고장",
+          "adjustment": 20
+        }
       ]
+    }
+  },
+  "chart_catalog": {
+    "_note": "STEP 선택 마법사에서 수집한 기본 과실비율(A:B)만 우선 채움. 가감요소(modifiers) 상세는 각 chartNo 상세페이지(예: https://accident.knia.or.kr/myaccident-content?chartNo=<차XX-X>&chartType=1)를 열어 추가 확인 필요 (미확인 항목은 modifiers 필드 생략).",
+    "차31-1": {
+      "category": "차 대 차 > 마주보는 방향 진행차량 상호 간의 사고 > 중앙선 침범 사고",
+      "label": "직진 대 중앙선 침범 역주행",
+      "vehicle_a": "직진",
+      "vehicle_b": "중앙선 침범 역주행",
+      "base_ratio": {
+        "a": 0,
+        "b": 100
+      }
+    },
+    "차31-2": {
+      "category": "차 대 차 > 마주보는 방향 진행차량 상호 간의 사고 > 중앙선 침범 사고",
+      "label": "도로가 아닌 장소에서 도로로 좌회전 진입",
+      "vehicle_a": "직진(정상 도로)",
+      "vehicle_b": "도로 아닌 장소에서 좌회전 진입(중앙선 침범)",
+      "base_ratio": {
+        "a": 0,
+        "b": 100
+      }
+    },
+    "차31-3": {
+      "category": "차 대 차 > 마주보는 방향 진행차량 상호 간의 사고 > 중앙선 침범 사고",
+      "label": "직진 대 중앙선침범 좌회전(유턴)",
+      "vehicle_a": "직진",
+      "vehicle_b": "중앙선침범 좌회전(유턴)",
+      "base_ratio": {
+        "a": 0,
+        "b": 100
+      }
+    },
+    "차31-4": {
+      "category": "차 대 차 > 마주보는 방향 진행차량 상호 간의 사고 > 중앙선 침범 사고",
+      "label": "정차 후 후진 대 맞은편 중앙선침범 좌회전(유턴)",
+      "vehicle_a": "정차 후 후진",
+      "vehicle_b": "맞은편 중앙선침범 좌회전(유턴)",
+      "base_ratio": {
+        "a": 20,
+        "b": 80
+      }
+    },
+    "차32-1": {
+      "category": "차 대 차 > 마주보는 방향 진행차량 상호 간의 사고 > 중앙선 없거나 중앙선침범 미적용 도로에서 교행 사고",
+      "label": "직진 대 맞은편 직진(교행사고)",
+      "vehicle_a": "직진",
+      "vehicle_b": "맞은편 직진",
+      "base_ratio": {
+        "a": 50,
+        "b": 50
+      }
+    },
+    "차33-1": {
+      "category": "차 대 차 > 마주보는 방향 진행차량 상호 간의 사고 > 직진(우회전)차와 유턴차 사이의 사고",
+      "label": "직진 대(對) 유턴",
+      "vehicle_a": "직진",
+      "vehicle_b": "유턴",
+      "base_ratio": {
+        "a": 100,
+        "b": 0
+      }
+    },
+    "차33-2": {
+      "category": "차 대 차 > 마주보는 방향 진행차량 상호 간의 사고 > 직진(우회전)차와 유턴차 사이의 사고",
+      "label": "우회전 대(對) 유턴",
+      "vehicle_a": "우회전",
+      "vehicle_b": "유턴",
+      "base_ratio": {
+        "a": 80,
+        "b": 20
+      }
+    },
+    "차61-1": {
+      "category": "차 대 차 > 자동차 대 이륜차 특수유형",
+      "label": "신호 없는 교차로 정체차량 우측 좁은 공간 이륜차 직진 대 맞은편 좌회전(측면 직진)",
+      "vehicle_a": "이륜차 직진(정체차량 우측 좁은 공간)",
+      "vehicle_b": "맞은편 좌회전(측면 직진)",
+      "base_ratio": {
+        "a": 70,
+        "b": 30
+      }
+    },
+    "차61-2": {
+      "category": "차 대 차 > 자동차 대 이륜차 특수유형",
+      "label": "이륜차 보도(인도) 주행 대 자동차의 도로가 아닌 장소로 우회전",
+      "vehicle_a": "이륜차 보도(인도) 주행",
+      "vehicle_b": "자동차 도로 아닌 장소로 우회전",
+      "base_ratio": {
+        "a": 70,
+        "b": 30
+      }
+    },
+    "차61-3": {
+      "category": "차 대 차 > 자동차 대 이륜차 특수유형",
+      "label": "후행이륜차 우측직진 대 선행정차 우측 문열림 사고",
+      "vehicle_a": "후행 이륜차 우측직진",
+      "vehicle_b": "선행정차 우측 문열림",
+      "base_ratio": {
+        "a": 30,
+        "b": 70
+      }
     }
   }
 }
