@@ -1,23 +1,54 @@
 {
-  "_comment": "TODO(3~4주차): 도로교통공단 과실비율정보포털 기준으로 실제 기본 과실비율 + 가감산 요소 채우기. 지금은 구조 스텁만 있음.",
+  "_source": "자동차사고 과실비율 분쟁심의위원회(손해보험협회 운영, accident.knia.or.kr) '상황 선택하여 찾기' 도표상세 페이지를 직접 확인해 수동으로 정리함. 공식 오픈API는 제공되지 않음 (2026-09-07 확인).",
+  "_usage_note": "포털 자체는 열람용 웹 서비스이며 별도 API 키가 없음. 사이트 하단에 '과실비율 인정기준 PDF'(개인 참고용, 책자 발간/배포 불가)도 있으니 더 많은 유형을 채울 때 참고 가능.",
   "accident_types": {
     "straight_vs_left_turn": {
-      "label": "직진 vs 좌회전",
-      "base_ratio": "70:30",
+      "label": "직진 vs 좌회전 (교차로, 양쪽 신호등)",
+      "chart_no": "차2-2",
+      "situation": "신호기가 있는 교차로에서 녹색신호로 직진하는 A차량과, 맞은편에서 녹색신호 좌회전(비보호 아님) 또는 적색신호에 좌회전한 B차량이 충돌한 사고",
+      "vehicle_a": "녹색 신호 직진",
+      "vehicle_b": "녹색(적색)신호위반 좌회전",
+      "base_ratio": { "a": 0, "b": 100 },
       "modifiers": [
-        {"condition": "TODO: 신호위반 여부", "adjustment": "TODO"},
-        {"condition": "TODO: 과속 여부", "adjustment": "TODO"}
+        { "side": "A", "condition": "현저한 과실", "adjustment": 10 },
+        { "side": "A", "condition": "중대한 과실", "adjustment": 20 },
+        { "side": "B", "condition": "현저한 과실", "adjustment": 10 },
+        { "side": "B", "condition": "중대한 과실", "adjustment": 20 }
       ]
     },
     "lane_change": {
-      "label": "차선변경",
-      "base_ratio": "70:30",
-      "modifiers": []
+      "label": "차선변경 (후행 직진 대 선행 진로변경)",
+      "chart_no": "차43-2",
+      "situation": "도로를 선행하여 진행하다가 차로를 변경하는 B차량과, 동일 방향에서 후행하여 직진하는 A차량이 충돌한 사고",
+      "vehicle_a": "후행 직진",
+      "vehicle_b": "선행 진로 변경",
+      "base_ratio": { "a": 30, "b": 70 },
+      "modifiers": [
+        { "side": "A", "condition": "현저한 과실", "adjustment": 10 },
+        { "side": "A", "condition": "중대한 과실", "adjustment": 20 },
+        { "side": "B", "condition": "진로변경 신호불이행·지연", "adjustment": 10 },
+        { "side": "B", "condition": "버스·다인승전용차로 위반", "adjustment": 10 },
+        { "side": "B", "condition": "진로변경 금지장소", "adjustment": 20 },
+        { "side": "B", "condition": "현저한 과실", "adjustment": 10 },
+        { "side": "B", "condition": "중대한 과실", "adjustment": 20 },
+        { "side": "B", "condition": "고속도로(자동차전용도로 포함) 추월차로로 차로변경", "adjustment": 10 }
+      ]
     },
     "rear_end_collision": {
-      "label": "후행 추돌",
-      "base_ratio": "100:0",
-      "modifiers": []
+      "label": "후행 추돌 (양 차량 주행 중 후방 추돌, 앞차량 정지 직후 포함)",
+      "chart_no": "차41-1",
+      "situation": "도로를 후행하는 A차량(뒤차)이 동일 방향에서 선행하는 B차량(앞차)을 추돌한 사고. 앞차가 이미 발생한 선행사고로 주정차 중이던 경우는 차42-1을 적용하므로 본 표 대상 아님.",
+      "vehicle_a": "뒤차(후행) 추돌",
+      "vehicle_b": "앞차(선행) 직진",
+      "base_ratio": { "a": 100, "b": 0 },
+      "modifiers": [
+        { "side": "A", "condition": "주택가·상점가 등", "adjustment": 10 },
+        { "side": "A", "condition": "현저한 과실", "adjustment": 10 },
+        { "side": "A", "condition": "중대한 과실", "adjustment": 20 },
+        { "side": "B", "condition": "저속주행 또는 편도 3차로 이상 도로에서 이유 없는 정지", "adjustment": 10 },
+        { "side": "B", "condition": "이유 없는 급 정지", "adjustment": 30 },
+        { "side": "B", "condition": "제동등화의 고장", "adjustment": 20 }
+      ]
     }
   }
 }
