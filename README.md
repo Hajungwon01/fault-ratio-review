@@ -50,8 +50,13 @@ uvicorn app.main:app --reload --port 8000
 
 `frontend/index.html` 파일을 브라우저로 바로 열면 됩니다 (백엔드가 `localhost:8000`에서 실행 중이어야 함).
 
+## 오늘(9/7) 검증 완료
+
+- [x] `pip install -r requirements.txt` 로 의존성 설치 확인 (venv 대신 `--user` 설치로 진행 — 이 환경에서 venv 생성이 불안정했음. 로컬 개발 시엔 README 상단 방법대로 venv 사용 권장)
+- [x] mock 모드로 파이프라인 end-to-end 실행 확인 (`asyncio`로 직접 호출 + `uvicorn`으로 실제 HTTP 요청 둘 다 테스트, `/assess` 정상 응답)
+- [x] git 저장소 초기 커밋 완료
+
 ## 다음 할 일 (1~2주차 나머지)
 
-- [ ] `/assess`가 mock 응답으로 전체 라운드를 끝까지 도는지 통합 테스트
 - [ ] 프론트엔드 실시간 공방 뷰(라운드별 진행 상태 표시) 최소 버전 붙이기
-- [ ] git 저장소 초기 커밋
+- [ ] `.env` 채워서 실제 ANTHROPIC_API_KEY 연동 경로도 한 번 확인 (지금은 mock 경로만 검증됨)
