@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>과실비율 산정 심사 (개발용 뼈대)</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: -apple-system, "맑은 고딕", sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1f1f1f; }
+  h1 { font-size: 20px; }
+  label { display: block; margin-top: 14px; font-weight: 600; font-size: 14px; }
+  input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 14px; }
+  textarea { min-height: 90px; }
+  button { margin-top: 20px; padding: 10px 18px; background: #1f4e78; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  pre { white-space: pre-wrap; background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 13px; margin-top: 20px; }
+  .status { margin-top: 10px; font-size: 13px; color: #666; }
+</style>
+</head>
+<body>
+  <h1>과실비율 산정 심사 — 개발용 입력 폼 (1주차 뼈대)</h1>
+  <p class="status">백엔드가 http://localhost:8000 에서 실행 중이어야 합니다.</p>
+
+  <form id="accident-form">
+    <label for="accident_type">사고 유형</label>
+    <select id="accident_type" required>
+      <option value="straight_vs_left_turn">직진 vs 좌회전</option>
+      <option value="lane_change">차선변경</option>
+      <option value="rear_end_collision">후행 추돌</option>
+      <option value="signal_violation">신호위반 관련</option>
+      <option value="other">기타</option>
+    </select>
+
+    <label for="signal_state">신호 상태</label>
+    <select id="signal_state">
+      <option value="unknown">알 수 없음</option>
+      <option value="a_green_b_green">A 녹색 / B 녹색</option>
+      <option value="a_green_b_red">A 녹색 / B 적색</option>
+      <option value="a_red_b_green">A 적색 / B 녹색</option>
+    </select>
+
+    <label for="lane_info">차선 상태</label>
+    <input id="lane_info" type="text" placeholder="예: 2차로 중 1차로 주행 중 변경" />
+
+    <label for="speed_a">A차량 속도 (km/h)</label>
+    <input id="speed_a" type="number" />
+
+    <label for="speed_b">B차량 속도 (km/h)</label>
+    <input id="speed_b" type="number" />
+
+    <label for="description">사고 상황 설명</label>
+    <textarea id="description" required placeholder="블랙박스 상황을 텍스트로 요약해 입력"></textarea>
+
+    <button type="submit" id="submit-btn">과실비율 심사 요청</button>
+  </form>
+
+  <p class="status" id="status"></p>
+  <pre id="result" hidden></pre>
+
+<script>
+const form = document.getElementById("accident-form");
+const statusEl = document.getElementById("status");
+const resultEl = document.getElementById("result");
+const submitBtn = document.getElementById("submit-btn");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+  statusEl.textContent = "심사 요청 중... (mock 모드에서는 몇 초 내로 응답)";
+  resultEl.hidden = true;
+
+  const payload = {
+    accident_type: document.getElementById("accident_type").value,
+    signal_state: document.getElementById("signal_state").value,
+    lane_info: document.getElementById("lane_info").value || null,
+    speed_a_kmh: parseFloat(document.getElementById("speed_a").value) || null,
+    speed_b_kmh: parseFloat(document.getElementById("speed_b").value) || null,
+    description: document.getElementById("description").value,
+    image_urls: [],
+  };
+
+  try {
+    const res = await fetch("http://localhost:8000/assess", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    statusEl.textContent = "완료";
+    resultEl.hidden = false;
+    resultEl.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    statusEl.textContent = `오류: ${err.message} (백엔드가 실행 중인지 확인하세요)`;
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

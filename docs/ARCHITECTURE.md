@@ -1,0 +1,35 @@
+# 아키텍처 개요
+
+## 파이프라인 흐름
+
+1. 사용자가 사고 정황 입력 (`AccidentInput`)
+2. `VehicleAAgent` / `VehicleBAgent` 가 병렬로 1차 논증 생성
+3. `FactCheckerAgent` 가 양측 인용 기준표·법조항 적용 검증
+4. A/B 에이전트 2라운드 반박
+5. `ReviewerStandardAgent` / `ReviewerSceneAgent` / `ReviewerPrecedentAgent` 가 병렬로 독립 평가
+6. `ProceedingAgent`(진행 에이전트, 오케스트레이터 역할)가 결과를 취합해
+   "몇 대 몇" `FaultReport` 생성 + 위원 간 편차가 크면 `needs_precise_review` 플래그
+
+## 코드 구조
+
+```
+backend/app/
+  main.py            FastAPI 엔트리포인트 (/health, /assess)
+  config.py          환경 설정 (.env 로드)
+  models/schemas.py  Pydantic 스키마 (입력/논증/평가/리포트)
+  core/llm_client.py LLM 호출 래퍼 (키 없으면 mock 응답)
+  core/pipeline.py   라운드 진행 로직 (FaultAssessmentPipeline)
+  agents/base.py     BaseAgent, ReviewerAgent 공통 클래스
+  agents/*.py        7개 에이전트 구현체 (현재는 스텁, 3주차부터 프롬프트 채움)
+  data/fault_ratio_reference.json  과실비율 기준표 참조 데이터 (스텁)
+```
+
+## 설계 원칙
+
+- **에이전트는 얇게, 파이프라인이 흐름을 통제한다.** 각 에이전트는 `run(context) -> dict` 형태의
+  단일 진입점만 가지며, 라운드 순서·병렬 실행은 `FaultAssessmentPipeline`이 담당한다.
+- **LLM 키 없이도 전체 파이프라인이 돌아가야 한다.** `LLMClient`가 mock 모드를 지원하므로,
+  프롬프트를 아직 안 짰거나 API 키가 없어도 구조적으로 끝까지 실행/테스트할 수 있다.
+- **이미지 인식은 별도 에이전트가 아니라 입력 전처리로 취급한다.** 9~10주차에 블랙박스 이미지가
+  들어오면, 비전 지원 LLM으로 상황을 텍스트 요약한 뒤 기존 `AccidentInput.description`에
+  합쳐 넣는 방식으로 확장한다 (신규 CV 모델 학습 없음).

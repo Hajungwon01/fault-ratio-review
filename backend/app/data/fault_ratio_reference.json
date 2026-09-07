@@ -1,0 +1,23 @@
+{
+  "_comment": "TODO(3~4주차): 도로교통공단 과실비율정보포털 기준으로 실제 기본 과실비율 + 가감산 요소 채우기. 지금은 구조 스텁만 있음.",
+  "accident_types": {
+    "straight_vs_left_turn": {
+      "label": "직진 vs 좌회전",
+      "base_ratio": "70:30",
+      "modifiers": [
+        {"condition": "TODO: 신호위반 여부", "adjustment": "TODO"},
+        {"condition": "TODO: 과속 여부", "adjustment": "TODO"}
+      ]
+    },
+    "lane_change": {
+      "label": "차선변경",
+      "base_ratio": "70:30",
+      "modifiers": []
+    },
+    "rear_end_collision": {
+      "label": "후행 추돌",
+      "base_ratio": "100:0",
+      "modifiers": []
+    }
+  }
+}
