@@ -56,22 +56,25 @@ uvicorn app.main:app --reload --port 8000
 - [x] mock 모드로 파이프라인 end-to-end 실행 확인 (`asyncio`로 직접 호출 + `uvicorn`으로 실제 HTTP 요청 둘 다 테스트, `/assess` 정상 응답)
 - [x] git 저장소 초기 커밋 완료
 
-## 과실비율 기준표 데이터 수집 (진행중)
+## 과실비율 기준표 데이터 수집 (완료: 차 대 차 108개 도표)
 
-`accident.knia.or.kr` (과실비율정보포털)에 공식 API가 없어, "상황 선택하여 찾기" 마법사를 브라우저로 직접 순회하며
-"차 대 차" 전체 유형의 기준표를 하나씩 수집 중입니다. 수집한 데이터는 `backend/app/data/fault_ratio_reference.json`의
-`chart_catalog` 섹션에 chartNo 기준으로 누적됩니다 (기본 과실비율만 우선 확보, 가감요소 상세는 추후 보강).
+`accident.knia.or.kr` (과실비율정보포털)에 공식 API는 없지만, 도표 상세 페이지
+(`/myaccident-content?chartNo=차51-1&chartType=1`)가 서버 렌더링 HTML이라 chartNo로 직접 접근해 파싱할 수 있습니다.
+(10/1: 마법사 수작업 순회 대신 이 방식으로 전환 → 가감요소·법규·판례까지 한 번에 확보)
 
-### 완료된 카테고리
-- [x] 자동차 대 이륜차 특수유형 (3/3): 차61-1, 차61-2, 차61-3
-- [x] 마주보는 방향 진행차량 상호 간의 사고 (7/7): 차31-1~4, 차32-1, 차33-1~2
+- 수집 스크립트: `backend/scripts/scrape_knia_charts.py` (`pip install beautifulsoup4 lxml` 후 실행, 재실행 시 `chart_catalog` 전체 갱신)
+- 이 서버는 중간 인증서 체인이 불완전해 Python 기본 SSL 검증이 실패하므로 OS 인증서를 쓰는 `curl`로 수신 (검증은 끄지 않음)
+- 결과: `backend/app/data/fault_ratio_reference.json` → `chart_catalog` (차1~차61, 108개)
+  - `situation` / `applicability` / `base_rationale`: 사고 상황·적용 범위·기본 과실 해설
+  - `variants[]`: 기본 과실 (가)(나)(다) 경우별 비율 + 경우별 가감요소(`modifiers`: side/condition/adjustment). 12개 도표가 다중 variant
+  - `modifier_notes` / `laws` / `precedents`: 수정요소 해설, 관련 법규, 판례·조정사례
+- 검증: 모든 variant의 A+B=100, 108개 전부 가감요소 보유. 기존 수기 3건(차2-2/43-2/41-1)과 일치.
+  기존 차33-1/33-2는 variant 하나만 담고 있었던 것을 바로잡음 (유턴: 상시유턴구역 20:80 / 신호유턴 100:0)
+- 범위 밖: 자동차 대 보행자 / 자전거 도표 (필요 시 같은 방식으로 확장)
 
-### 남은 카테고리
-- [ ] 기타 유형의 사고(주차장,회전교차로 등) — STEP3 5개 분기 (다음 진행 예정)
-- [ ] 같은 방향 진행차량 상호 간의 사고 — STEP3 8개 분기 (2개 chartNo만 확보: 차41-1, 차43-2)
-- [ ] 교차로(+자로, T자로 등) 사고 — STEP3 6개 분기 (일부 STEP5까지 있어 가장 큼)
+## 다음 할 일
 
-## 다음 할 일 (1~2주차 나머지)
+- [ ] 기준표 조회 모듈: 사고 입력 → 후보 chartNo 매칭 → A/B 에이전트 프롬프트에 해당 도표(기본 과실·가감요소·법규) 주입 (3~4주차, 다음 작업)
 
 - [ ] 프론트엔드 실시간 공방 뷰(라운드별 진행 상태 표시) 최소 버전 붙이기
 - [ ] `.env` 채워서 실제 ANTHROPIC_API_KEY 연동 경로도 한 번 확인 (지금은 mock 경로만 검증됨)
