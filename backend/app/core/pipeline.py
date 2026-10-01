@@ -16,6 +16,7 @@ from app.agents.reviewer_scene import ReviewerSceneAgent
 from app.agents.reviewer_standard import ReviewerStandardAgent
 from app.agents.vehicle_a import VehicleAAgent
 from app.agents.vehicle_b import VehicleBAgent
+from app.core.chart_lookup import find_candidate_charts, format_candidates
 from app.core.llm_client import LLMClient
 from app.models.schemas import AccidentInput, FaultReport
 
@@ -35,26 +36,29 @@ class FaultAssessmentPipeline:
 
     async def run(self, accident_input: AccidentInput) -> FaultReport:
         rounds = []
+        # 사고 정황으로 후보 기준표를 한 번 조회해 논증/검증 에이전트에 공통 주입
+        reference_charts = format_candidates(find_candidate_charts(accident_input))
+        base_ctx = {"accident_input": accident_input, "reference_charts": reference_charts}
 
         # 1라운드: A/B 병렬 1차 논증
         arg_a1, arg_b1 = await asyncio.gather(
-            self.vehicle_a.run({"accident_input": accident_input, "round": 1, "opponent_argument": None}),
-            self.vehicle_b.run({"accident_input": accident_input, "round": 1, "opponent_argument": None}),
+            self.vehicle_a.run({**base_ctx, "round": 1, "opponent_argument": None}),
+            self.vehicle_b.run({**base_ctx, "round": 1, "opponent_argument": None}),
         )
         rounds += [arg_a1, arg_b1]
 
         # 사실검증
         fact_check = await self.fact_checker.run(
-            {"argument_a": arg_a1.content, "argument_b": arg_b1.content}
+            {**base_ctx, "argument_a": arg_a1.content, "argument_b": arg_b1.content}
         )
 
         # 2라운드: 서로의 1차 주장을 받아 반박 (병렬)
         arg_a2, arg_b2 = await asyncio.gather(
             self.vehicle_a.run(
-                {"accident_input": accident_input, "round": 2, "opponent_argument": arg_b1.content}
+                {**base_ctx, "round": 2, "opponent_argument": arg_b1.content}
             ),
             self.vehicle_b.run(
-                {"accident_input": accident_input, "round": 2, "opponent_argument": arg_a1.content}
+                {**base_ctx, "round": 2, "opponent_argument": arg_a1.content}
             ),
         )
         rounds += [arg_a2, arg_b2]

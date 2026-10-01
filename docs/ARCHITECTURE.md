@@ -18,10 +18,11 @@ backend/app/
   config.py          환경 설정 (.env 로드)
   models/schemas.py  Pydantic 스키마 (입력/논증/평가/리포트)
   core/llm_client.py LLM 호출 래퍼 (키 없으면 mock 응답)
+  core/chart_lookup.py 기준표 조회 (사고 입력 → 후보 도표 → 프롬프트용 요약)
   core/pipeline.py   라운드 진행 로직 (FaultAssessmentPipeline)
   agents/base.py     BaseAgent, ReviewerAgent 공통 클래스
   agents/*.py        7개 에이전트 구현체 (현재는 스텁, 3주차부터 프롬프트 채움)
-  data/fault_ratio_reference.json  과실비율 기준표 참조 데이터 (스텁)
+  data/fault_ratio_reference.json  과실비율 기준표 (차 대 차 108개 도표, scripts/scrape_knia_charts.py 로 수집)
 ```
 
 ## 설계 원칙

@@ -74,7 +74,8 @@ uvicorn app.main:app --reload --port 8000
 
 ## 다음 할 일
 
-- [ ] 기준표 조회 모듈: 사고 입력 → 후보 chartNo 매칭 → A/B 에이전트 프롬프트에 해당 도표(기본 과실·가감요소·법규) 주입 (3~4주차, 다음 작업)
+- [x] 기준표 조회 모듈 (`core/chart_lookup.py`): 사고 입력 → 후보 도표 상위 3개(2-gram+IDF 매칭) → A/B·사실검증 에이전트 프롬프트에 주입. A/B 에이전트 실제 시스템 프롬프트 작성(`AdvocateAgent`). `cd backend && python -m pytest tests`
+- [ ] 실제 ANTHROPIC_API_KEY로 A/B 논증 품질 확인 + 프롬프트 튜닝 (조회 정확도: 테스트 사례 상위 3개 안 적중, 1위는 약 절반 → 부족하면 LLM 기반 도표 선택으로 보강)
 
 - [ ] 프론트엔드 실시간 공방 뷰(라운드별 진행 상태 표시) 최소 버전 붙이기
 - [ ] `.env` 채워서 실제 ANTHROPIC_API_KEY 연동 경로도 한 번 확인 (지금은 mock 경로만 검증됨)
