@@ -48,6 +48,8 @@
 명백한 사례 10건 + 애매한 복합 사례 10건 이상 (기획서 기준 각 10~15건). 공개된 사고 사례의 **상황만 참고해 각색**하고, 원본 영상·글을 그대로 옮기지 않는다.
 Sprint 1~2 중 5건 먼저, Sprint 3에 나머지.
 
+파일 형식은 `backend/eval/scenarios_dev.json`을 참고한다 (`{"scenarios": [...]}`, 필드: id, difficulty(명백/애매), description, signal_state·lane_info·speed_a_kmh·speed_b_kmh(선택), expected_chart(도표번호 목록), **expected_ratio_a([하한, 상한])**, expected_modifiers, note). 파일을 `backend/eval/`에 두고 `python scripts/run_scenarios.py --set eval/<파일명>.json --dry-run`으로 형식·도표 오타를 먼저 검증한 뒤 실행한다. **정답 도표의 A/B가 정황의 A(나)/B(상대) 중 누구인지**를 반드시 확인해 정답 범위를 정할 것 (도표 A/B와 정황 A/B가 반대인 시나리오를 섞어야 역할 대응 오류를 측정할 수 있다).
+
 | 필드 | 설명 | 예 |
 |---|---|---|
 | `id` | S-01 … | S-01 |

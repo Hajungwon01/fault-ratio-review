@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
@@ -23,6 +24,25 @@ from pydantic import BaseModel
 from app.config import get_settings
 
 T = TypeVar("T", bound=BaseModel)
+
+
+@dataclass
+class Usage:
+    """LLM 호출 집계 (호출 수, 입력/출력 토큰). 평가 도구가 시나리오별 비용을 보려고 쓴다. 가격은 여기서 다루지 않는다."""
+
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    def add(self, response) -> None:
+        self.calls += 1
+        u = getattr(response, "usage", None)
+        if u is not None:
+            self.input_tokens += getattr(u, "input_tokens", 0) or 0
+            self.output_tokens += getattr(u, "output_tokens", 0) or 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {"calls": self.calls, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens}
 
 
 class StructuredOutputError(RuntimeError):
@@ -78,6 +98,7 @@ class _OpenAIBackend:
     def __init__(self, settings) -> None:
         self.model = settings.openai_model
         self.reasoning_effort = settings.openai_reasoning_effort
+        self.usage = Usage()
         self.mock_mode = not settings.openai_api_key
         self._client = None
         if not self.mock_mode:
@@ -94,8 +115,8 @@ class _OpenAIBackend:
             params["reasoning"] = {"effort": self.reasoning_effort}
         return params
 
-    @staticmethod
-    def _check(response, *, allow_incomplete: bool = False) -> None:
+    def _check(self, response, *, allow_incomplete: bool = False) -> None:
+        self.usage.add(response)  # 모든 호출이 이 검사를 거치므로 여기서 집계한다
         for item in response.output:
             if item.type == "message":
                 for part in item.content:
@@ -174,6 +195,7 @@ class _OpenAIBackend:
 class _AnthropicBackend:
     def __init__(self, settings) -> None:
         self.model = settings.llm_model
+        self.usage = Usage()
         self.mock_mode = not settings.anthropic_api_key
         self._client = None
         if not self.mock_mode:
@@ -195,6 +217,7 @@ class _AnthropicBackend:
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
+        self.usage.add(response)
         return self._text(response)
 
     async def generate_json(self, system_prompt: str, user_prompt: str, model_cls: type[BaseModel]) -> str:
@@ -209,6 +232,7 @@ class _AnthropicBackend:
             messages=[{"role": "user", "content": user_prompt}],
             output_config={"format": {"type": "json_schema", "schema": transform_schema(model_cls)}},
         )
+        self.usage.add(response)
         return self._text(response)
 
     async def run_agent(self, system_prompt: str, user_prompt: str, tools: list, max_iterations: int) -> str:
@@ -222,6 +246,7 @@ class _AnthropicBackend:
         )
         last = None
         async for message in runner:
+            self.usage.add(message)
             last = message
         if last is None:
             raise RuntimeError("에이전트가 응답을 반환하지 않았습니다")
@@ -249,6 +274,11 @@ class LLMClient:
     @property
     def model(self) -> str:
         return self._backend.model
+
+    @property
+    def usage(self) -> Usage:
+        """이 클라이언트가 지금까지 실제로 보낸 호출 수·토큰 (mock 모드에서는 0)."""
+        return self._backend.usage
 
     @property
     def _client(self):

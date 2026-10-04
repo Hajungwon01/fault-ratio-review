@@ -36,6 +36,7 @@ MIN_REVIEWS = 2
 class FaultAssessmentPipeline:
     def __init__(self) -> None:
         llm = LLMClient()  # 에이전트들이 LLMClient 인스턴스를 공유
+        self.llm = llm  # 평가 도구가 파이프라인 1회 실행의 호출 수·토큰(llm.usage)을 읽는다
         self.vehicle_a = VehicleAAgent(llm)
         self.vehicle_b = VehicleBAgent(llm)
         self.fact_checker = FactCheckerAgent(llm)
