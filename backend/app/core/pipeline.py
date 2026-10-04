@@ -18,6 +18,7 @@ from app.agents.vehicle_a import VehicleAAgent
 from app.agents.vehicle_b import VehicleBAgent
 from app.core.chart_lookup import find_candidate_charts, format_candidates
 from app.core.llm_client import LLMClient
+from app.core.scope_check import OutOfScopeError, check_scope
 from app.models.schemas import AccidentInput, FaultReport
 
 
@@ -35,10 +36,18 @@ class FaultAssessmentPipeline:
         self.proceeding = ProceedingAgent(llm)
 
     async def run(self, accident_input: AccidentInput) -> FaultReport:
+        # 지원 범위 밖(보행자/자전거/PM/단독사고)이면 LLM 호출 전에 중단한다. uncertain 은 경고만 남기고 진행.
+        scope = check_scope(accident_input)
+        if scope.status == "unsupported":
+            raise OutOfScopeError(scope)
+        warnings = [scope.message] if scope.status == "uncertain" else []
+
         rounds = []
         # 사고 정황으로 후보 기준표를 한 번 조회해 논증/검증 에이전트에 공통 주입
         reference_charts = format_candidates(find_candidate_charts(accident_input))
-        base_ctx = {"accident_input": accident_input, "reference_charts": reference_charts}
+        # 에이전트에는 파이썬 repr 이 아니라 읽기 쉬운 텍스트를 준다
+        accident_text = accident_input.to_prompt_text()
+        base_ctx = {"accident_input": accident_text, "reference_charts": reference_charts}
 
         # 1라운드: A/B 병렬 1차 논증
         arg_a1, arg_b1 = await asyncio.gather(
@@ -65,7 +74,7 @@ class FaultAssessmentPipeline:
 
         # 검토위원 3종 병렬 평가
         reviewer_context = {
-            "accident_input": accident_input,
+            "accident_input": accident_text,
             "rounds": rounds,
             "fact_check": fact_check,
         }
@@ -75,4 +84,5 @@ class FaultAssessmentPipeline:
         report = await self.proceeding.run(
             {"reviews": list(reviews), "rounds": rounds, "fact_check": fact_check}
         )
+        report.warnings = warnings
         return report

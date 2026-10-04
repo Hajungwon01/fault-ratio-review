@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.core.pipeline import FaultAssessmentPipeline
+from app.core.scope_check import OutOfScopeError
 from app.models.schemas import AccidentInput, FaultReport
 
 settings = get_settings()
@@ -33,4 +34,11 @@ async def health() -> dict:
 
 @app.post("/assess", response_model=FaultReport)
 async def assess(accident_input: AccidentInput) -> FaultReport:
-    return await pipeline.run(accident_input)
+    try:
+        return await pipeline.run(accident_input)
+    except OutOfScopeError as e:
+        # 지원하지 않는 사고 유형: 심사 대신 사유와 안내를 돌려준다
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "out_of_scope", "category": e.result.category, "message": e.result.message},
+        )
