@@ -20,6 +20,9 @@ _CHART_RE = re.compile(r"차\d+-\d+")
 _RATIO_RE = re.compile(r"(\d{1,3})\s*[:대]\s*(\d{1,3})")
 _LAW_RE = re.compile(r"도로교통법\s*제\s*(\d+)\s*조")
 _RATIO_WINDOW = 60
+# "A 30 : B 80", "A차량 30% : B차량 80%" 처럼 A/B 를 명시한 비율 쌍
+# 프롬프트가 지정한 출력 형식 "최종: 정황 A 30 : 정황 B 80" 도 잡아야 하므로 A/B 앞의 '정황' 접두어를 허용한다
+_PAIR_RE = re.compile(r"(?:정황\s*)?A\s*(?:차량)?\s*(\d{1,3})\s*%?\s*[:：대]\s*(?:정황\s*)?B\s*(?:차량)?\s*(\d{1,3})")
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,17 @@ def verify_citations(text: str, catalog: ChartCatalog | None = None) -> list[Fin
                 )
                 if not any(f.message == msg for f in findings):
                     findings.append(Finding("error", msg))
+
+    # 과실비율은 항상 합이 100 이다. 가감요소를 한쪽에만 더하고 반대쪽을 내리지 않은 계산("A 30 : B 80")을 잡는다.
+    for m in _PAIR_RE.finditer(text):
+        a, b = int(m.group(1)), int(m.group(2))
+        if a <= 100 and b <= 100 and a + b != 100:
+            msg = (
+                f"과실비율 합이 100이 아님: A {a} : B {b} (합 {a + b}). "
+                "가감요소로 한쪽을 올리면 다른 쪽을 내려 합을 100으로 유지해야 함 (A 과실 = 기본 A + A측 가감점 − B측 가감점)"
+            )
+            if not any(f.message == msg for f in findings):
+                findings.append(Finding("error", msg))
 
     if cited:
         known_articles = {a for c in cited.values() for law in c["laws"] for a in re.findall(r"제\s*(\d+)\s*조", law["title"])}

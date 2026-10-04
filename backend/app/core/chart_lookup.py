@@ -142,7 +142,7 @@ def get_catalog() -> ChartCatalog:
     return ChartCatalog(charts)
 
 
-def find_candidate_charts(accident: AccidentInput, limit: int = 3) -> list[ChartMatch]:
+def find_candidate_charts(accident: AccidentInput, limit: int = 5) -> list[ChartMatch]:
     hint = _TYPE_HINTS.get(accident.accident_type, "") if accident.accident_type else ""
     parts = [accident.description, accident.lane_info or "", hint]
     return get_catalog().search(" ".join(parts), limit, mode=get_settings().chart_search_mode)
