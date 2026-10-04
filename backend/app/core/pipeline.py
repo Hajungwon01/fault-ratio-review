@@ -114,5 +114,11 @@ class FaultAssessmentPipeline:
         if len(reviews) < len(self.reviewers):
             # 독립 평가가 줄어 신뢰도가 낮으므로 보수적으로 정밀 심사 대상으로 표시한다
             report.needs_precise_review = True
+        # 위원의 숫자가 도표 기본 비율과 앞뒤가 안 맞으면(값/역할 오류 의심) 위원 3명이 일치해도 정밀 심사 대상으로 표시한다
+        for rv in reviews:
+            for w in rv.warnings:
+                warnings.append(f"위원 '{rv.perspective}' 평가 의심: {w}")
+        if any(rv.warnings for rv in reviews):
+            report.needs_precise_review = True
         report.warnings = warnings
         return report

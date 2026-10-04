@@ -73,11 +73,15 @@ def test_advocate_prompts_require_role_mapping_and_sum_rule():
         assert "갈아타" in p                                             # 2라운드 도표 갈아타기 금지
 
 
-def test_reviewers_judge_in_situation_a_terms():
+def test_reviewers_report_in_chart_terms_and_decide_number_last():
     for cls in (ReviewerStandardAgent, ReviewerSceneAgent, ReviewerPrecedentAgent):
-        assert "정황의 A차량(나의 차량)" in cls.OUTPUT_RULES
-        assert "도표 A = 정황 A/B" in cls.OUTPUT_RULES
+        r = cls.OUTPUT_RULES
+        assert "도표 A = 정황 A/B" in r                                   # 역할 대응 확인
+        assert "숫자는 맨 마지막에" in r                                    # 근거 먼저, 숫자는 나중
+        assert "**도표의 A차량 입장**" in r and "정황의 A 로 환산하지 마세요" in r  # 변환은 시스템이
+        assert 'chart_a_is=\"B\", chart_a_fault=100' in r                  # 역할 반전 예시(차41-1 앞차)
     assert "역할 대응" in ReviewerStandardAgent(LLMClient()).system_prompt
+    assert "chart_a_fault" in ReviewerStandardAgent(LLMClient()).system_prompt
 
 
 def test_fact_checker_checks_applicability_and_role_mapping():

@@ -11,7 +11,8 @@ from app.core.llm_client import LLMClient, StructuredOutputError
 from app.core.pipeline import FaultAssessmentPipeline
 from app.models.schemas import AgentArgument, FactCheckResult, ReviewerVerdict
 
-GOOD = {"fault_ratio_a": 30, "confidence": "high", "rationale": "차43-2 기본 과실 30:70 적용", "cited_rules": ["차43-2"]}
+GOOD = {"checklist": [], "rationale": "차43-2 기본 과실 30:70 적용", "chart_no": "차43-2", "chart_a_is": "A",
+        "chart_a_fault": 30, "confidence": "high", "cited_rules": ["차43-2"]}
 
 
 def _text_msg(text, stop_reason="end_turn"):
@@ -54,7 +55,7 @@ def test_valid_response_parsed_and_schema_sent(monkeypatch):
     assert v.fault_ratio_a == 30 and v.confidence == "high" and v.cited_rules == ["차43-2"]
     assert len(seen) == 1
     fmt = seen[0]["output_config"]["format"]
-    assert fmt["type"] == "json_schema" and "fault_ratio_a" in fmt["schema"]["properties"]
+    assert fmt["type"] == "json_schema" and "chart_a_fault" in fmt["schema"]["properties"]
 
 
 def test_retries_after_invalid_json_and_tells_model_why(monkeypatch):
@@ -66,7 +67,7 @@ def test_retries_after_invalid_json_and_tells_model_why(monkeypatch):
 
 
 def test_out_of_range_ratio_triggers_retry(monkeypatch):
-    bad = {**GOOD, "fault_ratio_a": 150}
+    bad = {**GOOD, "chart_a_fault": 150}
     llm, seen = make_llm(monkeypatch, [json.dumps(bad), json.dumps(GOOD)])
     assert call(llm).fault_ratio_a == 30 and len(seen) == 2
 
@@ -94,7 +95,7 @@ def test_mock_mode_returns_validated_mock_without_calling_api():
 def test_mock_payload_is_validated_too():
     llm = LLMClient()
     with pytest.raises(ValueError):
-        asyncio.run(llm.complete_json("s", "u", ReviewerVerdict, mock={**GOOD, "fault_ratio_a": 999}))
+        asyncio.run(llm.complete_json("s", "u", ReviewerVerdict, mock={**GOOD, "chart_a_fault": 999}))
 
 
 # ---------- ReviewerAgent ----------
@@ -109,7 +110,7 @@ CTX = {
 
 
 def test_reviewer_builds_score_with_b_as_complement(monkeypatch):
-    llm, seen = make_llm(monkeypatch, [json.dumps({**GOOD, "fault_ratio_a": 40})])
+    llm, seen = make_llm(monkeypatch, [json.dumps({**GOOD, "chart_a_fault": 40})])
     s = asyncio.run(ReviewerStandardAgent(llm).run(CTX))
     assert (s.fault_ratio_a, s.fault_ratio_b) == (40, 60)
     assert s.reviewer_name == "reviewer_standard_agent" and s.perspective == "기준표 적용"

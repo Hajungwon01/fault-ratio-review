@@ -102,16 +102,34 @@ class ChecklistItem(BaseModel):
 class ReviewerVerdict(BaseModel):
     """검토위원 LLM 이 구조화 출력으로 돌려주는 평가 (reviewer_name/perspective 는 코드가 채운다).
 
-    B 과실은 100 - A 로 계산하므로 묻지 않는다 (합계가 어긋난 응답이 나올 수 없게 한다).
+    설계 두 가지 (첫 실측에서 위원 3명이 근거 문장은 "A 과실 없음"인데 숫자는 A 100 으로 쓴 오류에서 나왔다):
+
+    1. **필드 순서 = 모델이 생성하는 순서.** 근거(checklist, rationale)를 먼저 쓰고 숫자는 맨 뒤에 둔다.
+       숫자를 앞에 두면 모델이 답부터 확정하고 근거를 끼워 맞춘다.
+    2. **역할 변환은 코드가 한다.** 모델은 "도표의 A가 정황의 누구인지"(chart_a_is)와 "도표 A 입장의 과실"(chart_a_fault)만
+       답하고, 정황 A 기준 과실비율(fault_ratio_a)은 아래 프로퍼티가 계산한다. B 과실은 100 - A 라 묻지 않는다.
     """
 
-    fault_ratio_a: int = Field(..., ge=0, le=100, description="A차량 과실비율(%), 0~100 정수")
+    checklist: list[ChecklistItem] = Field(default_factory=list, description="관점별 체크리스트 항목별 판단")
+    rationale: str = Field(..., min_length=1, description="평가 근거. 적용한 도표·가감요소·정황을 구체적으로")
+    chart_no: str = Field(..., description='적용한 도표번호. 예: "차43-2". 도표를 적용하지 않았으면 빈 문자열')
+    chart_a_is: Literal["A", "B", "none"] = Field(
+        ..., description='도표 안의 A차량이 정황의 A(나의 차량)이면 "A", 정황의 B(상대 차량)이면 "B". 도표를 적용하지 않았으면 "none"'
+    )
+    chart_a_fault: int = Field(
+        ..., ge=0, le=100,
+        description="**도표의 A차량 입장**에서의 최종 과실비율(0~100 정수): 도표 A의 기본 과실에 가감요소를 반영한 값. "
+                    "정황의 A 로 환산하지 말 것(환산은 시스템이 한다). chart_a_is 가 none 이면 정황 A 의 과실비율",
+    )
     confidence: Literal["high", "medium", "low"] = Field(
         ..., description="이 평가에 대한 확신. 근거 도표가 불명확하거나 정황 정보가 부족하면 low"
     )
-    checklist: list[ChecklistItem] = Field(default_factory=list, description="관점별 체크리스트 항목별 판단")
-    rationale: str = Field(..., min_length=1, description="평가 근거. 적용한 도표·가감요소·정황을 구체적으로")
     cited_rules: list[str] = Field(default_factory=list, description="인용한 도표번호·조문 (예: 차43-2, 도로교통법 제19조)")
+
+    @property
+    def fault_ratio_a(self) -> int:
+        """정황 A(나의 차량) 기준 과실비율. 도표의 A가 정황의 B 이면 뒤집는다."""
+        return 100 - self.chart_a_fault if self.chart_a_is == "B" else self.chart_a_fault
 
 
 class ReviewScore(BaseModel):
@@ -125,6 +143,10 @@ class ReviewScore(BaseModel):
     confidence: Literal["high", "medium", "low"] = "medium"
     cited_rules: list[str] = Field(default_factory=list)
     checklist: list[ChecklistItem] = Field(default_factory=list)
+    chart_no: str = ""
+    chart_a_is: Literal["A", "B", "none"] = "none"
+    chart_a_fault: Optional[int] = None  # 도표 A 입장의 과실 (변환 전 값, 검증·분석용)
+    warnings: list[str] = Field(default_factory=list, description="도표 기본 비율과의 불일치 등 이 평가의 신뢰 문제")
 
 
 class FaultReport(BaseModel):

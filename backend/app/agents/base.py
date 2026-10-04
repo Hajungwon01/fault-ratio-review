@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from app.core.chart_tools import build_chart_tools
+from app.core.verdict_check import check_verdict
 from app.core.llm_client import LLMClient
 from app.models.schemas import AgentArgument
 
@@ -64,12 +65,19 @@ class ReviewerAgent(BaseAgent):
     OUTPUT_RULES = (
         "\n\n[출력 규칙]\n"
         "- 반드시 지정된 JSON 스키마로만 답하세요.\n"
-        "- fault_ratio_a 는 A차량 과실비율(0~100 정수)이며 B 과실은 100 - A 로 자동 계산됩니다.\n"
         "- A/B 에이전트의 주장은 서로 유리하게 쓴 것이므로 그대로 따르지 말고, 당신의 관점에서 독립적으로 평가하세요.\n"
         "- 사실검증이 지적한 오류가 있는 주장은 근거로 삼지 마세요.\n"
         "- **도표 안의 A/B 는 도표가 정한 역할 이름이며 정황의 A(나)/B(상대)와 다를 수 있습니다.** 도표를 적용하기 전에 "
-        "도표의 'A=…/B=…' 정의와 정황을 대조해 `도표 A = 정황 A/B` 대응을 확인하고, "
-        "fault_ratio_a 는 항상 **정황의 A차량(나의 차량)** 기준으로 쓰세요. A/B 에이전트가 이 대응을 틀렸다면 그 주장은 따르지 마세요.\n"
+        "도표의 'A=…/B=…' 정의와 정황을 대조해 `도표 A = 정황 A/B` 대응을 확인하세요. "
+        "A/B 에이전트가 이 대응을 틀렸다면 그 주장은 따르지 마세요.\n"
+        "- **숫자는 맨 마지막에 정하세요.** JSON 필드 순서대로 먼저 checklist, rationale 로 판단을 끝낸 뒤 "
+        "chart_no, chart_a_is, chart_a_fault 를 채우세요. 근거 문장과 숫자가 모순되면 안 됩니다.\n"
+        "- chart_no: 적용한 도표번호 (적용하지 않았으면 빈 문자열). "
+        "chart_a_is: 도표 안의 A차량이 정황의 A(나의 차량)이면 \"A\", 정황의 B(상대 차량)이면 \"B\", 도표를 적용하지 않았으면 \"none\". "
+        "chart_a_fault: **도표의 A차량 입장**에서의 최종 과실비율(0~100 정수) — 도표 A 의 기본 과실에 가감요소를 반영한 값입니다. "
+        "**정황의 A 로 환산하지 마세요** (환산은 시스템이 하고, B 과실은 100 에서 뺀 값입니다). chart_a_is 가 none 이면 정황 A 의 과실비율을 쓰세요.\n"
+        "- 예) 도표 차41-1 은 도표 A=뒤차 추돌(과실 100), 도표 B=앞차(과실 0)입니다. 정황의 나(A)가 정차 중이던 앞차였다면 "
+        "chart_a_is=\"B\", chart_a_fault=100 입니다 (도표 A 에 해당하는 상대 차량의 과실이 100 이므로 나의 과실은 0).\n"
         "- 도표·정황 정보가 부족해 판단이 불확실하면 confidence 를 low 로 두세요.\n"
         "- checklist 에는 위 [체크리스트] 항목을 빠짐없이, 항목 이름을 그대로 써서 항목마다 하나씩 판단을 적으세요. "
         "정황에 없는 사실은 추측하지 말고 '정황 정보 없음'이라고 쓰세요.\n"
@@ -88,21 +96,30 @@ class ReviewerAgent(BaseAgent):
             self._build_user_prompt(context),
             ReviewerVerdict,
             mock={
-                "fault_ratio_a": 50,
-                "confidence": "low",
+                "checklist": [],
                 "rationale": f"[MOCK {self.perspective}] 실제 LLM 이 연결되지 않아 자리표시 평가를 반환합니다.",
+                "chart_no": "",
+                "chart_a_is": "none",
+                "chart_a_fault": 50,
+                "confidence": "low",
                 "cited_rules": [],
             },
         )
+        # 도표 기본 비율과 대조해 앞뒤가 안 맞으면 신뢰도를 낮추고 경고를 남긴다 (전원이 같이 틀려도 걸러낼 수 있게)
+        problems = check_verdict(verdict)
         return ReviewScore(
             reviewer_name=self.name,
             perspective=self.perspective,
             fault_ratio_a=verdict.fault_ratio_a,
             fault_ratio_b=100 - verdict.fault_ratio_a,
             rationale=verdict.rationale,
-            confidence=verdict.confidence,
+            confidence="low" if problems else verdict.confidence,
             cited_rules=verdict.cited_rules,
             checklist=verdict.checklist,
+            chart_no=verdict.chart_no.strip(),
+            chart_a_is=verdict.chart_a_is,
+            chart_a_fault=verdict.chart_a_fault,
+            warnings=problems,
         )
 
     def _build_user_prompt(self, context: dict[str, Any]) -> str:
