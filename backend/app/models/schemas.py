@@ -92,6 +92,13 @@ class FactCheckResult(BaseModel):
     flagged_citations: list[str] = Field(default_factory=list)
 
 
+class ChecklistItem(BaseModel):
+    """관점별 체크리스트 한 항목의 판단 결과 (설명 가능성·위원 간 비교용)."""
+
+    item: str = Field(..., description="체크리스트 항목 이름 (프롬프트에 주어진 항목 그대로)")
+    finding: str = Field(..., description="이 항목에 대한 판단. 정보가 없으면 '정황 정보 없음'이라고 쓴다")
+
+
 class ReviewerVerdict(BaseModel):
     """검토위원 LLM 이 구조화 출력으로 돌려주는 평가 (reviewer_name/perspective 는 코드가 채운다).
 
@@ -102,6 +109,7 @@ class ReviewerVerdict(BaseModel):
     confidence: Literal["high", "medium", "low"] = Field(
         ..., description="이 평가에 대한 확신. 근거 도표가 불명확하거나 정황 정보가 부족하면 low"
     )
+    checklist: list[ChecklistItem] = Field(default_factory=list, description="관점별 체크리스트 항목별 판단")
     rationale: str = Field(..., min_length=1, description="평가 근거. 적용한 도표·가감요소·정황을 구체적으로")
     cited_rules: list[str] = Field(default_factory=list, description="인용한 도표번호·조문 (예: 차43-2, 도로교통법 제19조)")
 
@@ -116,6 +124,7 @@ class ReviewScore(BaseModel):
     rationale: str
     confidence: Literal["high", "medium", "low"] = "medium"
     cited_rules: list[str] = Field(default_factory=list)
+    checklist: list[ChecklistItem] = Field(default_factory=list)
 
 
 class FaultReport(BaseModel):

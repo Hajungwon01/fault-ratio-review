@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from app.agents.fact_checker import FactCheckerAgent
 from app.agents.orchestrator import ProceedingAgent
@@ -18,8 +19,18 @@ from app.agents.vehicle_a import VehicleAAgent
 from app.agents.vehicle_b import VehicleBAgent
 from app.core.chart_lookup import find_candidate_charts, format_candidates
 from app.core.llm_client import LLMClient
+from app.core.reviewer_context import (
+    cited_chart_numbers,
+    format_cited_charts,
+    format_precedents,
+)
 from app.core.scope_check import OutOfScopeError, check_scope
 from app.models.schemas import AccidentInput, FaultReport
+
+logger = logging.getLogger(__name__)
+
+# 독립 평가가 이보다 적으면 편차·합의의 의미가 없어 심사를 중단한다
+MIN_REVIEWS = 2
 
 
 class FaultAssessmentPipeline:
@@ -73,16 +84,34 @@ class FaultAssessmentPipeline:
         rounds += [arg_a2, arg_b2]
 
         # 검토위원 3종 병렬 평가
+        # 위원에게는 A/B 가 실제로 인용한 (존재하는) 도표의 상세와, 판례 근거 등급을 함께 준다
+        cited = cited_chart_numbers(rounds)
         reviewer_context = {
             "accident_input": accident_text,
             "rounds": rounds,
             "fact_check": fact_check,
+            "cited_charts": format_cited_charts(cited),
+            "precedents": format_precedents(cited),
         }
-        reviews = await asyncio.gather(*(r.run(reviewer_context) for r in self.reviewers))
+        results = await asyncio.gather(*(r.run(reviewer_context) for r in self.reviewers), return_exceptions=True)
+        reviews = []
+        for reviewer, res in zip(self.reviewers, results):
+            if isinstance(res, BaseException) and not isinstance(res, Exception):
+                raise res  # CancelledError 등은 삼키지 않는다
+            if isinstance(res, Exception):
+                logger.error("검토위원 %s 평가 실패: %s", reviewer.name, res)
+                warnings.append(f"검토위원 '{reviewer.perspective}' 평가에 실패해 제외했습니다 ({type(res).__name__}).")
+            else:
+                reviews.append(res)
+        if len(reviews) < MIN_REVIEWS:
+            raise RuntimeError(f"유효한 검토위원 평가가 {len(reviews)}건뿐이라 심사를 완료할 수 없습니다 (최소 {MIN_REVIEWS}건)")
 
         # 진행 에이전트가 취합해 최종 리포트 생성
         report = await self.proceeding.run(
-            {"reviews": list(reviews), "rounds": rounds, "fact_check": fact_check}
+            {"reviews": reviews, "rounds": rounds, "fact_check": fact_check}
         )
+        if len(reviews) < len(self.reviewers):
+            # 독립 평가가 줄어 신뢰도가 낮으므로 보수적으로 정밀 심사 대상으로 표시한다
+            report.needs_precise_review = True
         report.warnings = warnings
         return report

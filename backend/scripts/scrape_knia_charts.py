@@ -53,7 +53,10 @@ def parse_modifiers(ul) -> list[dict]:
         b = int(norm(li.select_one(".side em.isB").get_text()))
         # 가감요소는 한쪽 차량에만 걸린다. 값은 가산(+)/감산(-) 점수.
         side, adj = ("A", a) if a else ("B", b)
-        mods.append({"side": side, "condition": re.sub(r"^[AB]\s+", "", label), "adjustment": adj})
+        # group: 포털 체크박스의 data-orcndno. 0 은 독립 항목, 0 이 아닌 같은 번호끼리는 하나만 선택 가능(택일)
+        box = li.select_one("input[type=checkbox]")
+        group = int(box["data-orcndno"]) if box and box.get("data-orcndno", "").isdigit() else 0
+        mods.append({"side": side, "condition": re.sub(r"^[AB]\s+", "", label), "adjustment": adj, "group": group})
     return mods
 
 

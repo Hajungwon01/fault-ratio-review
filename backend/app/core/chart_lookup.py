@@ -163,8 +163,16 @@ def format_chart(no: str, chart: dict[str, Any], *, with_notes: bool = False) ->
         head = f"기본 과실 {v['label']} ".strip()
         lines.append(f"{head} A {r['a']} : B {r['b']}  (A={v['vehicle_a']} / B={v['vehicle_b']})")
         if v["modifiers"]:
-            mods = ", ".join(f"{m['side']} {m['condition']} {_signed(m['adjustment'])}" for m in v["modifiers"])
+            # 같은 [택일N] 표시는 포털에서 하나만 선택할 수 있는 항목들이다 (예: 현저한 과실 vs 중대한 과실)
+            mods = ", ".join(
+                f"{'[택일%d] ' % m['group'] if m.get('group') else ''}{m['side']} {m['condition']} {_signed(m['adjustment'])}"
+                for m in v["modifiers"]
+            )
             lines.append(f"  가감요소: {mods}")
+    lines.append(
+        "가감요소 적용 방식: A 과실 = 기본 A + (A측 가감점 합) − (B측 가감점 합), 0~100 범위. "
+        "같은 [택일N] 표시끼리는 하나만 적용"
+    )
     if chart["laws"]:
         lines.append("관련 법규: " + " / ".join(l["title"] for l in chart["laws"]))
     if with_notes:

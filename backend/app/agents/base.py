@@ -67,8 +67,15 @@ class ReviewerAgent(BaseAgent):
         "- fault_ratio_a 는 A차량 과실비율(0~100 정수)이며 B 과실은 100 - A 로 자동 계산됩니다.\n"
         "- A/B 에이전트의 주장은 서로 유리하게 쓴 것이므로 그대로 따르지 말고, 당신의 관점에서 독립적으로 평가하세요.\n"
         "- 사실검증이 지적한 오류가 있는 주장은 근거로 삼지 마세요.\n"
-        "- 도표·정황 정보가 부족해 판단이 불확실하면 confidence 를 low 로 두세요."
+        "- 도표·정황 정보가 부족해 판단이 불확실하면 confidence 를 low 로 두세요.\n"
+        "- checklist 에는 위 [체크리스트] 항목을 빠짐없이, 항목 이름을 그대로 써서 항목마다 하나씩 판단을 적으세요. "
+        "정황에 없는 사실은 추측하지 말고 '정황 정보 없음'이라고 쓰세요.\n"
+        "- 주어진 [인용 도표 상세]·[판례·조정사례] 밖의 도표번호·판례·비율을 만들어 인용하지 마세요."
     )
+
+    def _extra_sections(self, context: dict[str, Any]) -> str:
+        """관점별로 사용자 프롬프트에 덧붙일 자료. 서브클래스가 재정의한다."""
+        return ""
 
     async def run(self, context: dict[str, Any]):
         from app.models.schemas import ReviewerVerdict, ReviewScore
@@ -92,12 +99,15 @@ class ReviewerAgent(BaseAgent):
             rationale=verdict.rationale,
             confidence=verdict.confidence,
             cited_rules=verdict.cited_rules,
+            checklist=verdict.checklist,
         )
 
     def _build_user_prompt(self, context: dict[str, Any]) -> str:
         return (
             f"[{self.perspective} 관점에서 평가]\n\n"
             f"[사고 정황]\n{context.get('accident_input')}\n\n"
+            f"[인용 도표 상세]\n{context.get('cited_charts', '(없음)')}\n\n"
+            f"{self._extra_sections(context)}"
             f"[A/B 논증]\n{format_rounds(context.get('rounds'))}\n\n"
             f"[사실검증 결과]\n{format_fact_check(context.get('fact_check'))}\n"
         )
