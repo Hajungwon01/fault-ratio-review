@@ -37,9 +37,9 @@
 
 ```bash
 cd backend
-python3 -m venv .venv
+python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt   # dev: pytest, 기준표 수집용 bs4/lxml
 cp .env.example .env        # 필요 시 ANTHROPIC_API_KEY 입력 (없어도 mock 모드로 동작)
 uvicorn app.main:app --reload --port 8000
 ```
