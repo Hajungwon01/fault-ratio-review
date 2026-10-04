@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from anthropic import beta_async_tool
 
+import asyncio
+
+from app.config import get_settings
 from app.core.chart_lookup import format_chart, get_catalog
 
 
@@ -22,7 +25,10 @@ def build_chart_tools(trace: list[str]) -> list:
             limit: 반환할 후보 수 (기본 5, 최대 10).
         """
         trace.append(f"search_charts({query!r})")
-        matches = catalog.search(query, min(max(limit, 1), 10))
+        # 임베딩 인코딩은 CPU 에서 수백 ms 걸리므로 이벤트 루프를 막지 않게 스레드로 넘긴다
+        matches = await asyncio.to_thread(
+            catalog.search, query, min(max(limit, 1), 10), get_settings().chart_search_mode
+        )
         if not matches:
             return "검색 결과 없음. 다른 표현으로 다시 검색하세요."
         return "\n".join(f"{m.chart_no}  {m.chart['label']}  ({m.chart['category']})" for m in matches)

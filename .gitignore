@@ -19,3 +19,6 @@ Thumbs.db
 .vscode/
 .idea/*
 !.idea/runConfigurations/
+
+# 임베딩 벡터 캐시 등 로컬 산출물
+backend/.cache/

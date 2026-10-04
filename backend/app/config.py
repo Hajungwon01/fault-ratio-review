@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     llm_model: str = "claude-opus-5-5"  # 비용을 낮추려면 LLM_MODEL=claude-sonnet-5-5
     port: int = 8000
+    # 도표 검색 방식: keyword | embedding | hybrid (embedding/hybrid 는 requirements-embedding.txt 필요)
+    chart_search_mode: str = "keyword"
 
     @property
     def llm_mock_mode(self) -> bool:

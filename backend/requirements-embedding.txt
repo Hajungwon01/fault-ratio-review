@@ -1,0 +1,4 @@
+# 도표 임베딩 검색(선택 기능, CHART_SEARCH_MODE=embedding|hybrid)용. 없으면 키워드 검색으로 자동 대체된다.
+# torch 는 CPU 빌드면 충분하다 (도표 108개). 모델 nlpai-lab/KURE-v1 은 최초 사용 시 Hugging Face 에서 내려받는다 (약 2GB대).
+sentence-transformers>=3.0
+numpy>=1.26
