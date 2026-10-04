@@ -24,6 +24,7 @@ def _text_msg(text, stop_reason="end_turn"):
 
 def make_llm(monkeypatch, replies):
     """replies: 요청 순서대로 돌려줄 응답 text 목록(마지막 값 반복). 보낸 요청 본문은 seen 에 쌓인다."""
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy")
     from app.config import get_settings
 

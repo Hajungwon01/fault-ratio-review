@@ -40,7 +40,7 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt   # dev: pytest, 기준표 수집용 bs4/lxml
-cp .env.example .env        # 필요 시 ANTHROPIC_API_KEY 입력 (없어도 mock 모드로 동작)
+cp .env.example .env        # OPENAI_API_KEY, OPENAI_MODEL 입력 (키가 없으면 mock 모드로 동작). 확인: python scripts/verify_llm.py
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -75,8 +75,8 @@ uvicorn app.main:app --reload --port 8000
 ## 다음 할 일
 
 - [x] 기준표 조회 모듈 (`core/chart_lookup.py`): 사고 입력 → 후보 도표 상위 3개(2-gram+IDF 매칭) → A/B·사실검증 에이전트 프롬프트에 주입. A/B 에이전트 실제 시스템 프롬프트 작성(`AdvocateAgent`). `cd backend && python -m pytest tests`
-- [x] 서비스 내부 멀티 에이전트화: A/B·사실검증이 Tool Runner 루프로 기준표 도구를 직접 호출 (`core/chart_tools.py`, `LLMClient.run_agent`). 루프 배선은 가짜 HTTP 서버로 테스트 (`tests/test_run_agent_loop.py`). 기본 모델은 `claude-opus-5-5` (`LLM_MODEL`로 변경)
-- [ ] 실제 ANTHROPIC_API_KEY로 A/B 논증 품질 확인 + 프롬프트 튜닝 (도표 조회: 로컬 KURE-v1 임베딩 검색 추가 — `CHART_SEARCH_MODE=hybrid`, 설치 `pip install -r requirements-embedding.txt`. 개발용 초안 17건 기준 Top-3 71%→94%, Top-1 12%→41%. 직접 수집한 평가셋으로 재측정 필요: `python scripts/eval_chart_search.py -v`)
+- [x] 서비스 내부 멀티 에이전트화: A/B·사실검증이 도구 호출 루프로 기준표 도구를 직접 호출 (`core/chart_tools.py`, `LLMClient.run_agent`). **LLM 프로바이더는 OpenAI(기본) / Anthropic 선택** (`LLM_PROVIDER`), 루프·구조화 출력 배선은 가짜 HTTP 서버로 테스트 (`tests/test_openai_backend.py`, `tests/test_run_agent_loop.py`)
+- [ ] 실제 OPENAI_API_KEY·OPENAI_MODEL 로 `python scripts/verify_llm.py` 실행 후 A/B 논증 품질 확인 + 프롬프트 튜닝 (도표 조회: 로컬 KURE-v1 임베딩 검색 추가 — `CHART_SEARCH_MODE=hybrid`, 설치 `pip install -r requirements-embedding.txt`. 개발용 초안 17건 기준 Top-3 71%→94%, Top-1 12%→41%. 직접 수집한 평가셋으로 재측정 필요: `python scripts/eval_chart_search.py -v`)
 
 - [ ] 프론트엔드 실시간 공방 뷰(라운드별 진행 상태 표시) 최소 버전 붙이기
-- [ ] `.env` 채워서 실제 ANTHROPIC_API_KEY 연동 경로도 한 번 확인 (지금은 mock 경로만 검증됨)
+- [ ] `.env` 채워서 실제 LLM 연동 경로 확인: `python scripts/verify_llm.py` (지금은 mock·가짜 서버 경로만 검증됨)

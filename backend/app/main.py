@@ -50,6 +50,7 @@ async def health() -> dict:
     return {
         "status": "ok",
         "app": settings.app_name,
+        "llm_provider": settings.llm_provider,
         "llm_mock_mode": settings.llm_mock_mode,
     }
 

@@ -18,7 +18,8 @@ backend/app/
   config.py          환경 설정 (.env 로드)
   models/schemas.py  Pydantic 스키마 (입력/논증/평가/리포트)
   core/llm_client.py LLM 호출 래퍼 (키 없으면 mock 응답)
-  core/chart_tools.py  에이전트용 도구(search_charts/get_chart) — Tool Runner 루프에서 호출
+  core/tooling.py      프로바이더 중립 도구 클래스 (OpenAI/Anthropic 형식으로 변환)
+  core/chart_tools.py  에이전트용 도구(search_charts/get_chart) — 도구 호출 루프에서 호출
   core/chart_lookup.py 기준표 조회 (사고 입력 → 후보 도표 → 프롬프트용 요약)
   core/pipeline.py   라운드 진행 로직 (FaultAssessmentPipeline)
   agents/base.py     BaseAgent, ReviewerAgent 공통 클래스
@@ -26,9 +27,11 @@ backend/app/
   data/fault_ratio_reference.json  과실비율 기준표 (차 대 차 108개 도표, scripts/scrape_knia_charts.py 로 수집)
 ```
 
-## 에이전트 실행 방식 (Tool Runner)
+## 에이전트 실행 방식 (도구 호출 루프)
 
-- 논증(A/B)·사실검증 에이전트는 `LLMClient.run_agent()` 로 **Anthropic SDK Tool Runner 루프**를 돈다.
+- LLM 프로바이더는 `LLM_PROVIDER`(openai 기본 | anthropic)로 고른다. `LLMClient`가 프로바이더별 백엔드를 감싸고, mock 처리와 구조화 출력의 검증·재시도는 공통으로 처리한다.
+  OpenAI는 Responses API(함수 호출 루프, `text.format` json_schema strict), Anthropic은 SDK Tool Runner를 쓴다.
+- 논증(A/B)·사실검증 에이전트는 `LLMClient.run_agent()` 로 **도구 호출 루프**를 돈다.
   모델이 `search_charts`/`get_chart` 를 스스로 호출해 기준표를 확인하고, 더 이상 도구를 부르지 않으면 종료한다.
   파이프라인이 미리 넣어주는 후보 도표는 "힌트"일 뿐이고, 인용 근거는 실제 조회한 도표여야 한다.
 - 도구 호출 기록은 `AgentArgument.tool_calls` 에 남는다 (공방 뷰에서 "어떤 도표를 조회했는지" 표시 예정).

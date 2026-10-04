@@ -18,6 +18,7 @@ def _msg(content, stop_reason):
 
 
 def test_run_agent_executes_tools_then_returns_final_text(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy")
     from app.config import get_settings
 
