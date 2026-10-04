@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -92,6 +92,20 @@ class FactCheckResult(BaseModel):
     flagged_citations: list[str] = Field(default_factory=list)
 
 
+class ReviewerVerdict(BaseModel):
+    """검토위원 LLM 이 구조화 출력으로 돌려주는 평가 (reviewer_name/perspective 는 코드가 채운다).
+
+    B 과실은 100 - A 로 계산하므로 묻지 않는다 (합계가 어긋난 응답이 나올 수 없게 한다).
+    """
+
+    fault_ratio_a: int = Field(..., ge=0, le=100, description="A차량 과실비율(%), 0~100 정수")
+    confidence: Literal["high", "medium", "low"] = Field(
+        ..., description="이 평가에 대한 확신. 근거 도표가 불명확하거나 정황 정보가 부족하면 low"
+    )
+    rationale: str = Field(..., min_length=1, description="평가 근거. 적용한 도표·가감요소·정황을 구체적으로")
+    cited_rules: list[str] = Field(default_factory=list, description="인용한 도표번호·조문 (예: 차43-2, 도로교통법 제19조)")
+
+
 class ReviewScore(BaseModel):
     """검토위원 1인의 독립 평가."""
 
@@ -100,6 +114,8 @@ class ReviewScore(BaseModel):
     fault_ratio_a: int = Field(..., ge=0, le=100)
     fault_ratio_b: int = Field(..., ge=0, le=100)
     rationale: str
+    confidence: Literal["high", "medium", "low"] = "medium"
+    cited_rules: list[str] = Field(default_factory=list)
 
 
 class FaultReport(BaseModel):

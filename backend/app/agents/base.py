@@ -30,34 +30,76 @@ class BaseAgent(ABC):
         """context를 받아 이 에이전트의 산출물을 반환한다."""
 
 
+def format_rounds(rounds: list | None) -> str:
+    """A/B 논증 기록을 위원이 읽기 쉬운 텍스트로 만든다 (pydantic repr 노출 방지)."""
+    if not rounds:
+        return "(없음)"
+    blocks = []
+    for r in rounds:
+        side = "A" if "vehicle_a" in r.agent_name else "B" if "vehicle_b" in r.agent_name else r.agent_name
+        cited = f"\n인용: {', '.join(r.cited_rules)}" if r.cited_rules else ""
+        blocks.append(f"[{side}측 {r.round}라운드]\n{r.content}{cited}")
+    return "\n\n".join(blocks)
+
+
+def format_fact_check(fc) -> str:
+    if fc is None:
+        return "(없음)"
+    head = "인용 오류 없음" if fc.is_valid else "인용 오류 있음"
+    flagged = "\n".join(f"- {f}" for f in fc.flagged_citations) or "- 지적 사항 없음"
+    return f"{head}\n{flagged}"
+
+
 class ReviewerAgent(BaseAgent):
     """검토위원 3종(기준표/현장정황/유사사례)의 공통 부모.
 
     perspective만 다르고 평가 로직 골격은 동일하므로 여기서 공유한다.
+    응답은 ReviewerVerdict 스키마로 구조화 출력을 받고(파싱 실패 시 LLMClient 가 재시도),
+    B 과실은 100 - A 로 계산한다. 관점별 체크리스트 프롬프트는 서브클래스의 system_prompt (#8~#10).
     """
 
     perspective: str = "unspecified"
 
-    async def run(self, context: dict[str, Any]):
-        from app.models.schemas import ReviewScore
+    # 모든 위원에게 공통으로 붙는 출력 규칙. 관점별 프롬프트는 그대로 두고 뒤에 덧붙인다.
+    OUTPUT_RULES = (
+        "\n\n[출력 규칙]\n"
+        "- 반드시 지정된 JSON 스키마로만 답하세요.\n"
+        "- fault_ratio_a 는 A차량 과실비율(0~100 정수)이며 B 과실은 100 - A 로 자동 계산됩니다.\n"
+        "- A/B 에이전트의 주장은 서로 유리하게 쓴 것이므로 그대로 따르지 말고, 당신의 관점에서 독립적으로 평가하세요.\n"
+        "- 사실검증이 지적한 오류가 있는 주장은 근거로 삼지 마세요.\n"
+        "- 도표·정황 정보가 부족해 판단이 불확실하면 confidence 를 low 로 두세요."
+    )
 
-        raw = await self.llm.complete(self.system_prompt, self._build_user_prompt(context))
-        # TODO(6~7주차): raw LLM 응답을 실제로 파싱해 fault_ratio_a/b, rationale을 채운다.
-        # 지금은 파이프라인이 끝까지 도는지 확인하기 위한 자리표시 구조만 반환한다.
+    async def run(self, context: dict[str, Any]):
+        from app.models.schemas import ReviewerVerdict, ReviewScore
+
+        verdict = await self.llm.complete_json(
+            self.system_prompt + self.OUTPUT_RULES,
+            self._build_user_prompt(context),
+            ReviewerVerdict,
+            mock={
+                "fault_ratio_a": 50,
+                "confidence": "low",
+                "rationale": f"[MOCK {self.perspective}] 실제 LLM 이 연결되지 않아 자리표시 평가를 반환합니다.",
+                "cited_rules": [],
+            },
+        )
         return ReviewScore(
             reviewer_name=self.name,
             perspective=self.perspective,
-            fault_ratio_a=50,
-            fault_ratio_b=50,
-            rationale=raw,
+            fault_ratio_a=verdict.fault_ratio_a,
+            fault_ratio_b=100 - verdict.fault_ratio_a,
+            rationale=verdict.rationale,
+            confidence=verdict.confidence,
+            cited_rules=verdict.cited_rules,
         )
 
     def _build_user_prompt(self, context: dict[str, Any]) -> str:
         return (
-            f"[{self.perspective} 관점에서 평가]\n"
-            f"사고 정황: {context.get('accident_input')}\n"
-            f"A/B 논증 라운드: {context.get('rounds')}\n"
-            f"사실검증 결과: {context.get('fact_check')}\n"
+            f"[{self.perspective} 관점에서 평가]\n\n"
+            f"[사고 정황]\n{context.get('accident_input')}\n\n"
+            f"[A/B 논증]\n{format_rounds(context.get('rounds'))}\n\n"
+            f"[사실검증 결과]\n{format_fact_check(context.get('fact_check'))}\n"
         )
 
 
