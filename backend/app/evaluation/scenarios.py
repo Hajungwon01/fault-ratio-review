@@ -100,7 +100,9 @@ class ScenarioResult:
     chart_primary_hit: Optional[bool] = None
     chart_any_hit: Optional[bool] = None
     reviewer_a: dict[str, int] = field(default_factory=dict)
+    reviewer_notes: dict[str, str] = field(default_factory=dict)  # 위원별 판단 근거 앞부분 (오답 원인 분석용, 재실행 없이 확인)
     deviation: Optional[float] = None
+    spread: Optional[int] = None
     needs_precise_review: Optional[bool] = None
     warnings: list[str] = field(default_factory=list)
     fact_valid: Optional[bool] = None
@@ -162,7 +164,9 @@ def evaluate_report(scenario: Scenario, report: FaultReport, *, seconds: float =
         chart_primary_hit=(primary in exp) if exp else None,
         chart_any_hit=bool(exp & set(charts)) if exp else None,
         reviewer_a={r.perspective: r.fault_ratio_a for r in report.reviews},
+        reviewer_notes={r.perspective: r.rationale[:240] for r in report.reviews},
         deviation=report.deviation,
+        spread=report.spread,
         needs_precise_review=report.needs_precise_review,
         warnings=list(report.warnings),
         fact_valid=report.fact_check.is_valid if report.fact_check else None,
@@ -286,7 +290,7 @@ def format_comparison(rows: list[tuple[str, dict[str, Any]]], price_in: float | 
 
 
 def format_results(results: list[ScenarioResult]) -> str:
-    lines = [f"{'id':<8}{'난이도':<5}{'도표':<5}{'A과실':>6}{'정답범위':>10}{'범위':>5}{'편차':>6}{'플래그':>6}{'초':>6}{'호출':>5}  주 도표"]
+    lines = [f"{'id':<8}{'난이도':<5}{'도표':<5}{'A과실':>6}{'정답범위':>10}{'범위':>5}{'위원차':>6}{'플래그':>6}{'초':>6}{'호출':>5}  주 도표"]
     for r in results:
         if not r.ok:
             lines.append(f"{r.id:<8}{r.difficulty:<5}오류: {r.error[:90]}")
@@ -296,7 +300,7 @@ def format_results(results: list[ScenarioResult]) -> str:
         inr = "  - " if r.in_range is None else ("  ✓ " if r.in_range else "  ✗ ")
         flag = "Y" if r.needs_precise_review else "n"
         lines.append(
-            f"{r.id:<8}{r.difficulty:<5}{chart}{r.final_a:>6}{rng:>10}{inr}{(r.deviation if r.deviation is not None else 0):>6.1f}{flag:>6}"
+            f"{r.id:<8}{r.difficulty:<5}{chart}{r.final_a:>6}{rng:>10}{inr}{('-' if r.spread is None else r.spread):>6}{flag:>6}"
             f"{r.seconds:>6.0f}{r.calls:>5}  {r.primary_chart or '-'} (정답 {','.join(r.expected_chart) or '-'})"
         )
     return "\n".join(lines)
@@ -312,7 +316,11 @@ def format_misses(results: list[ScenarioResult]) -> str:
                     f"A {r.final_a} (정답 {r.expected_ratio_a[0]}~{r.expected_ratio_a[1]})" if r.in_range is False else "",
                 ) if x
             )
-            out.append(f"- {r.id}: {why}\n    위원 A과실 {r.reviewer_a} / 사실검증 지적 {r.fact_flagged[:2]} / 경고 {r.warnings}")
+            notes = "".join(f"\n      · {p}({r.reviewer_a.get(p)}): {n}" for p, n in r.reviewer_notes.items())
+            out.append(
+                f"- {r.id}: {why}\n    위원 A과실 {r.reviewer_a} (표준편차 {r.deviation}, 최대-최소 {r.spread}) "
+                f"/ 사실검증 지적 {r.fact_flagged[:2]} / 경고 {r.warnings}{notes}"
+            )
     return "\n".join(out) or "(오답 없음)"
 
 

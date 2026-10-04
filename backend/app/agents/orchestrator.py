@@ -15,8 +15,13 @@ from typing import Any
 from app.agents.base import BaseAgent
 from app.models.schemas import FaultReport
 
-# TODO(8주차): 실측 테스트 후 적절한 임계값으로 조정
-DEVIATION_THRESHOLD = 15.0
+# "정밀 심사 필요" 판정 기준 — 둘 중 하나라도 넘으면 플래그. 둘 다 평가셋 실측 후 조정할 초기값이다 (#13).
+#
+# 표준편차만으로는 위원이 3명일 때 이상치 한 명을 놓친다: 한 명이 나머지와 d점 벗어나면 표준편차는 약 0.47*d 라서
+# 임계값 15 는 d >= 32점이어야 켜진다. 실제 첫 측정에서 위원 A과실이 30/0/0 (30점 차)인데 편차 14.1 로 플래그가 안 켜졌다.
+# 그래서 사람이 직관적으로 이해하는 "위원 간 최대-최소 차이(spread)"를 함께 쓴다.
+SPREAD_THRESHOLD = 20      # 위원 A과실의 최대-최소 차이(%p)
+DEVIATION_THRESHOLD = 15.0  # 위원 A과실의 모집단 표준편차
 
 
 class ProceedingAgent(BaseAgent):
@@ -36,6 +41,7 @@ class ProceedingAgent(BaseAgent):
         avg_a = round(statistics.mean(ratios_a))
         avg_b = 100 - avg_a
         deviation = round(statistics.pstdev(ratios_a), 1) if len(ratios_a) > 1 else 0.0
+        spread = (max(ratios_a) - min(ratios_a)) if ratios_a else 0
 
         basis = await self.llm.complete(
             self.system_prompt,
@@ -47,7 +53,8 @@ class ProceedingAgent(BaseAgent):
             fault_ratio_b=avg_b,
             basis=basis,
             deviation=deviation,
-            needs_precise_review=deviation > DEVIATION_THRESHOLD,
+            spread=spread,
+            needs_precise_review=spread >= SPREAD_THRESHOLD or deviation > DEVIATION_THRESHOLD,
             rounds=context.get("rounds", []),
             fact_check=context.get("fact_check"),
             reviews=reviews,

@@ -134,6 +134,7 @@ class FaultReport(BaseModel):
     fault_ratio_b: int = Field(..., ge=0, le=100)
     basis: str
     deviation: float = Field(..., description="검토위원 간 과실비율 편차(표준편차 등)")
+    spread: int = Field(0, description="검토위원 A과실비율의 최대-최소 차이(%p). 표준편차가 이상치 한 명을 놓치는 것을 보완")
     needs_precise_review: bool = Field(
         ..., description="편차가 임계값을 넘어 정밀 심사가 필요한 사고인지 여부"
     )

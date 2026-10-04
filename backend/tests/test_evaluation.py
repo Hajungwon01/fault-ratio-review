@@ -286,3 +286,52 @@ def test_script_rejects_unknown_scenario_id():
 def test_script_dry_run_never_calls_anything():
     p = _run_script("--dry-run", "--limit", "2")
     assert p.returncode == 0 and "[dry-run]" in p.stdout and "D01, D02" in p.stdout
+
+
+# ---------- 위원 간 편차: 이상치 한 명을 놓치지 않는가 (실제 첫 측정: 30/0/0 인데 플래그 안 켜짐) ----------
+def _proceed(ratios):
+    from app.agents.orchestrator import ProceedingAgent
+    from app.core.llm_client import LLMClient
+
+    reviews = [review(f"위원{i}", a, "근거") for i, a in enumerate(ratios)]
+    return asyncio.run(ProceedingAgent(LLMClient()).run({"reviews": reviews, "rounds": [], "fact_check": None}))
+
+
+def test_one_outlier_of_30_points_is_flagged_even_though_stdev_is_below_old_threshold():
+    r = _proceed([30, 0, 0])
+    assert r.deviation == 14.1 and r.deviation < 15      # 표준편차만으로는 임계값(15)에 못 미친다
+    assert r.spread == 30 and r.needs_precise_review     # 최대-최소로는 잡힌다
+    assert r.fault_ratio_a == 10 and r.fault_ratio_b == 90
+
+
+def test_spread_threshold_boundary():
+    assert _proceed([30, 25, 30]).needs_precise_review is False   # 최대-최소 5
+    assert _proceed([30, 20, 11]).needs_precise_review is False   # 19
+    assert _proceed([30, 20, 10]).needs_precise_review is True    # 20 (경계값 포함)
+
+
+def test_stdev_rule_still_applies_and_two_reviewers_work():
+    assert _proceed([0, 100]).needs_precise_review is True
+    assert _proceed([40, 40]).needs_precise_review is False and _proceed([40, 40]).spread == 0
+
+
+def test_results_keep_spread_and_reviewer_notes_for_root_cause_analysis():
+    rep = report(10, reviews=[review("기준표 적용", 30, "차43-2 적용 " + "가" * 400), review("현장 정황", 0, "근거2"), review("유사사례", 0, "근거3")],
+                 flagged=True, dev=14.1)
+    rep.spread = 30
+    r = evaluate_report(sc(), rep)
+    assert r.spread == 30 and len(r.reviewer_notes["기준표 적용"]) == 240 and r.reviewer_notes["현장 정황"] == "근거2"
+    out = format_misses([r])
+    assert "최대-최소 30" in out and "· 현장 정황(0): 근거2" in out
+
+
+def test_old_result_without_spread_renders_dash_not_zero():
+    import re
+
+    old = res("OLD", in_range=True, prim=True)   # 범위·도표 열이 ✓ 로 찍히게 명시
+    old.spread = None
+    row = format_results([old]).splitlines()[1]
+    assert re.search(r"✓\s+-\s+n\s", row), row          # 위원차 열이 '-' 이고 바로 뒤가 플래그(n)
+    new = res("NEW", in_range=True, prim=True)
+    new.spread = 0
+    assert re.search(r"✓\s+0\s+n\s", format_results([new]).splitlines()[1])  # 진짜 0 은 0 으로 표시
