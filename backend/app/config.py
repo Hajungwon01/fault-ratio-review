@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     app_name: str = "과실비율 산정 심사 자동화"
     anthropic_api_key: str = ""
-    llm_model: str = "claude-sonnet-4-5"
+    llm_model: str = "claude-opus-5-5"  # 비용을 낮추려면 LLM_MODEL=claude-sonnet-5-5
     port: int = 8000
 
     @property

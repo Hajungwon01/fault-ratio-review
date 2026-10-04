@@ -17,6 +17,13 @@ class RecordingLLM:
         self.calls.append((system_prompt, user_prompt))
         return "차43-2 적용. 인용: 차43-2, 도로교통법 제19조"
 
+    async def run_agent(self, system_prompt, user_prompt, tools, max_iterations=8):
+        self.calls.append((system_prompt, user_prompt))
+        self.tool_names = [t.name for t in tools]
+        # 도구를 실제로 한 번 호출해 trace 가 쌓이는지 확인
+        await tools[1].call({"chart_no": "차43-2"})
+        return "차43-2 적용. 인용: 차43-2, 도로교통법 제19조"
+
 
 def test_catalog_loaded_and_ratios_sum_to_100():
     charts = get_catalog().charts
@@ -53,6 +60,8 @@ def test_reference_charts_injected_into_advocate_prompt():
     system, user = llm.calls[0]
     assert "차43-2" in user and "가감요소" in user
     assert arg.cited_rules == ["차43-2", "도로교통법 제19조"]
+    assert llm.tool_names == ["search_charts", "get_chart"]
+    assert arg.tool_calls == ["get_chart('차43-2')"]
 
 
 def test_extract_citations_dedup():
@@ -63,3 +72,25 @@ def test_pipeline_runs_end_to_end_mock():
     ty, desc, _ = CASES[0]
     report = asyncio.run(FaultAssessmentPipeline().run(AccidentInput(accident_type=ty, description=desc)))
     assert len(report.rounds) == 4
+
+
+def test_chart_tools_unknown_chart_and_search():
+    from app.core.chart_tools import build_chart_tools
+
+    trace = []
+    search, get = build_chart_tools(trace)
+    assert "존재하지 않는" in asyncio.run(get.call({"chart_no": "차99-9"}))
+    assert "차41-1" in asyncio.run(search.call({"query": "정차한 앞차를 뒤차가 추돌"}))
+    assert "기본 과실" in asyncio.run(get.call({"chart_no": "차43-2"}))
+    assert len(trace) == 3
+
+
+def test_fact_checker_parses_errors():
+    from app.agents.fact_checker import FactCheckerAgent
+
+    class L(RecordingLLM):
+        async def run_agent(self, *a, **k):
+            return "차43-2 확인.\n오류: A측 차43-9 는 존재하지 않음\n오류: B측 기본 과실 80:20 은 틀림(실제 30:70)"
+
+    r = asyncio.run(FactCheckerAgent(L()).run({"argument_a": "a", "argument_b": "b"}))
+    assert not r.is_valid and len(r.flagged_citations) == 2

@@ -46,6 +46,7 @@ class AgentArgument(BaseModel):
     round: int
     content: str
     cited_rules: list[str] = Field(default_factory=list, description="인용한 기준표/법조항")
+    tool_calls: list[str] = Field(default_factory=list, description="이 논증을 만들며 실제로 호출한 도구 기록")
 
 
 class FactCheckResult(BaseModel):

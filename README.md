@@ -75,6 +75,7 @@ uvicorn app.main:app --reload --port 8000
 ## 다음 할 일
 
 - [x] 기준표 조회 모듈 (`core/chart_lookup.py`): 사고 입력 → 후보 도표 상위 3개(2-gram+IDF 매칭) → A/B·사실검증 에이전트 프롬프트에 주입. A/B 에이전트 실제 시스템 프롬프트 작성(`AdvocateAgent`). `cd backend && python -m pytest tests`
+- [x] 서비스 내부 멀티 에이전트화: A/B·사실검증이 Tool Runner 루프로 기준표 도구를 직접 호출 (`core/chart_tools.py`, `LLMClient.run_agent`). 루프 배선은 가짜 HTTP 서버로 테스트 (`tests/test_run_agent_loop.py`). 기본 모델은 `claude-opus-5-5` (`LLM_MODEL`로 변경)
 - [ ] 실제 ANTHROPIC_API_KEY로 A/B 논증 품질 확인 + 프롬프트 튜닝 (조회 정확도: 테스트 사례 상위 3개 안 적중, 1위는 약 절반 → 부족하면 LLM 기반 도표 선택으로 보강)
 
 - [ ] 프론트엔드 실시간 공방 뷰(라운드별 진행 상태 표시) 최소 버전 붙이기

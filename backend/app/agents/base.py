@@ -9,6 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from app.core.chart_tools import build_chart_tools
 from app.core.llm_client import LLMClient
 from app.models.schemas import AgentArgument
 
@@ -94,12 +95,14 @@ class AdvocateAgent(BaseAgent):
             f"[상대측({self.other}차량) 이전 주장]\n{context.get('opponent_argument')}\n\n"
             f"현재 라운드: {round_no}"
         )
-        content = await self.llm.complete(self.system_prompt, user_prompt)
+        trace: list[str] = []
+        content = await self.llm.run_agent(self.system_prompt, user_prompt, build_chart_tools(trace))
         return AgentArgument(
             agent_name=self.name,
             round=round_no,
             content=content,
             cited_rules=extract_citations(content),
+            tool_calls=trace,
         )
 
 

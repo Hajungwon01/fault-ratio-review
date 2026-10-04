@@ -18,12 +18,24 @@ backend/app/
   config.py          환경 설정 (.env 로드)
   models/schemas.py  Pydantic 스키마 (입력/논증/평가/리포트)
   core/llm_client.py LLM 호출 래퍼 (키 없으면 mock 응답)
+  core/chart_tools.py  에이전트용 도구(search_charts/get_chart) — Tool Runner 루프에서 호출
   core/chart_lookup.py 기준표 조회 (사고 입력 → 후보 도표 → 프롬프트용 요약)
   core/pipeline.py   라운드 진행 로직 (FaultAssessmentPipeline)
   agents/base.py     BaseAgent, ReviewerAgent 공통 클래스
   agents/*.py        7개 에이전트 구현체 (현재는 스텁, 3주차부터 프롬프트 채움)
   data/fault_ratio_reference.json  과실비율 기준표 (차 대 차 108개 도표, scripts/scrape_knia_charts.py 로 수집)
 ```
+
+## 에이전트 실행 방식 (Tool Runner)
+
+- 논증(A/B)·사실검증 에이전트는 `LLMClient.run_agent()` 로 **Anthropic SDK Tool Runner 루프**를 돈다.
+  모델이 `search_charts`/`get_chart` 를 스스로 호출해 기준표를 확인하고, 더 이상 도구를 부르지 않으면 종료한다.
+  파이프라인이 미리 넣어주는 후보 도표는 "힌트"일 뿐이고, 인용 근거는 실제 조회한 도표여야 한다.
+- 도구 호출 기록은 `AgentArgument.tool_calls` 에 남는다 (공방 뷰에서 "어떤 도표를 조회했는지" 표시 예정).
+- 라운드 순서·병렬 실행(`asyncio.gather`)은 여전히 코드(`FaultAssessmentPipeline`)가 통제한다.
+  위원/진행 에이전트는 현재 도구 없는 단발 호출(`complete`).
+- 에이전트가 서로를 호출하는 자율 오케스트레이션(Managed Agents multiagent 등)은 도입하지 않았다 — 심사 흐름이 고정이라
+  코드 통제가 재현성·디버깅에 유리하다. 필요해지면 재검토.
 
 ## 설계 원칙
 
