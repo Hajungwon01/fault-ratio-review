@@ -17,4 +17,5 @@ Thumbs.db
 
 # Editors
 .vscode/
-.idea/
+.idea/*
+!.idea/runConfigurations/
