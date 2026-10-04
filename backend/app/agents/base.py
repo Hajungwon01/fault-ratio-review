@@ -87,12 +87,26 @@ class AdvocateAgent(BaseAgent):
             f"6. 당신은 {me}차량측 변호인입니다. {me}에 유리한 해석을 하되, 사실을 왜곡하면 사실검증에서 감점됩니다."
         )
 
+    def _fact_check_block(self, context: dict[str, Any]) -> str:
+        """2라운드: 사실검증이 지적한 사항을 측별로 나눠 전달한다 (1라운드에는 없음)."""
+        fc = context.get("fact_check")
+        if fc is None:
+            return ""
+        mine = [f for f in fc.flagged_citations if f.removeprefix("(경고) ").startswith(f"{self.side}측")]
+        theirs = [f for f in fc.flagged_citations if f.removeprefix("(경고) ").startswith(f"{self.other}측")]
+        return (
+            "[사실검증 결과]\n"
+            f"- {self.side}측(당신) 지적: {'; '.join(mine) or '없음'}  → 틀린 인용은 정정하고, 정정 불가한 주장은 철회하세요.\n"
+            f"- {self.other}측(상대) 지적: {'; '.join(theirs) or '없음'}  → 상대 주장의 약점으로 활용하세요.\n\n"
+        )
+
     async def run(self, context: dict[str, Any]) -> AgentArgument:
         round_no = context.get("round", 1)
         user_prompt = (
             f"[참조 기준표]\n{context.get('reference_charts', '(없음)')}\n\n"
             f"[사고 정황]\n{context.get('accident_input')}\n\n"
             f"[상대측({self.other}차량) 이전 주장]\n{context.get('opponent_argument')}\n\n"
+            f"{self._fact_check_block(context)}"
             f"현재 라운드: {round_no}"
         )
         trace: list[str] = []

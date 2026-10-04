@@ -1,6 +1,7 @@
 """사실검증 에이전트 — 양측이 인용한 기준표·법조항 적용의 정확성 검증.
 
-TODO(5주차): 규칙 기반(도표번호·비율 존재 여부) 사전 검증을 LLM 검증 앞에 추가.
+검증은 2단계: ① core/citation_check.py 규칙 기반(도표 존재·기본 과실비율·법조문 대응) → ② LLM + 도구(get_chart)로 나머지 확인.
+flagged_citations 는 "A측/B측 <내용>" 형식이며, 규칙 경고는 "(경고)" 접두어로 구분한다.
 """
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ from typing import Any
 
 from app.agents.base import BaseAgent
 from app.core.chart_tools import build_chart_tools
+from app.core.citation_check import verify_citations
 from app.models.schemas import FactCheckResult
 
 
@@ -25,11 +27,33 @@ class FactCheckerAgent(BaseAgent):
         )
 
     async def run(self, context: dict[str, Any]) -> FactCheckResult:
+        # 1) 규칙 기반 사전 검증 (도표 존재 / 기본 과실비율 / 법조문-도표 대응)
+        rule_findings = {
+            "A측": verify_citations(str(context.get("argument_a") or "")),
+            "B측": verify_citations(str(context.get("argument_b") or "")),
+        }
+        rule_lines = [f"{side} {f}" for side, fs in rule_findings.items() for f in fs]
+
+        # 2) LLM 검증: 규칙 검증 결과를 알려주고 도구로 나머지(가감요소 적용 적정성 등)를 확인
         user_prompt = (
+            f"[참조 기준표]\n{context.get('reference_charts', '(없음)')}\n\n"
+            f"[사고 정황]\n{context.get('accident_input')}\n\n"
+            f"[규칙 기반 사전 검증 결과]\n{chr(10).join(rule_lines) or '지적 사항 없음'}\n\n"
             f"A차량측 주장: {context.get('argument_a')}\n"
             f"B차량측 주장: {context.get('argument_b')}\n"
         )
         trace: list[str] = []
         notes = await self.llm.run_agent(self.system_prompt, user_prompt, build_chart_tools(trace))
-        errors = [line.split(":", 1)[1].strip() for line in notes.splitlines() if line.strip().startswith("오류:")]
-        return FactCheckResult(is_valid=not errors, notes=notes, flagged_citations=errors)
+        llm_errors = [line.split(":", 1)[1].strip() for line in notes.splitlines() if line.strip().startswith("오류:")]
+
+        rule_errors = [
+            f"{side} {f.message}" for side, fs in rule_findings.items() for f in fs if f.level == "error"
+        ]
+        rule_warnings = [
+            f"(경고) {side} {f.message}" for side, fs in rule_findings.items() for f in fs if f.level == "warning"
+        ]
+        # 같은 내용을 규칙·LLM 이 둘 다 지적하면 중복이 생길 수 있어 순서를 유지하며 제거
+        flagged = list(dict.fromkeys(rule_errors + llm_errors + rule_warnings))
+        return FactCheckResult(
+            is_valid=not (rule_errors or llm_errors), notes=notes, flagged_citations=flagged
+        )

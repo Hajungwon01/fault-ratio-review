@@ -55,10 +55,10 @@ class FaultAssessmentPipeline:
         # 2라운드: 서로의 1차 주장을 받아 반박 (병렬)
         arg_a2, arg_b2 = await asyncio.gather(
             self.vehicle_a.run(
-                {**base_ctx, "round": 2, "opponent_argument": arg_b1.content}
+                {**base_ctx, "round": 2, "opponent_argument": arg_b1.content, "fact_check": fact_check}
             ),
             self.vehicle_b.run(
-                {**base_ctx, "round": 2, "opponent_argument": arg_a1.content}
+                {**base_ctx, "round": 2, "opponent_argument": arg_a1.content, "fact_check": fact_check}
             ),
         )
         rounds += [arg_a2, arg_b2]
