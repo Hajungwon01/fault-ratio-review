@@ -124,3 +124,40 @@ def test_pipeline_flags_review_even_when_all_reviewers_agree(monkeypatch):
 def test_pipeline_normal_mock_run_has_no_review_warnings():
     r = asyncio.run(FaultAssessmentPipeline().run(AccidentInput(description="녹색 신호에 직진하는데 맞은편 차량이 좌회전하며 충돌했습니다")))
     assert r.warnings == [] and all(v.warnings == [] for v in r.reviews)
+
+
+# ---------- 최종값은 위원 중앙값 (한 명의 이탈값에 강하다) ----------
+def report_for(ratios):
+    from app.agents.orchestrator import ProceedingAgent
+    from app.models.schemas import ReviewScore
+
+    reviews = [ReviewScore(reviewer_name=f"r{i}", perspective=f"p{i}", fault_ratio_a=a, fault_ratio_b=100 - a, rationale="r")
+               for i, a in enumerate(ratios)]
+    return asyncio.run(ProceedingAgent(LLMClient()).run({"reviews": reviews}))
+
+
+@pytest.mark.parametrize("ratios,expected", [
+    ([80, 80, 20], 80),    # 4.1 D08: 한 명이 이중 변환으로 틀려도 평균(60)에 끌려가지 않는다
+    ([0, 100, 100], 100),  # 4.1 D10
+    ([20, 20, 20], 20),
+    ([30, 70], 50),        # 위원이 2명이면 평균과 같다
+])
+def test_final_ratio_is_median_of_reviewers(ratios, expected):
+    r = report_for(ratios)
+    assert r.fault_ratio_a == expected and r.fault_ratio_b == 100 - expected
+
+
+def test_outlier_still_triggers_precise_review_flag():
+    assert report_for([80, 80, 20]).needs_precise_review is True   # 중앙값으로 가려도 불일치는 알린다
+
+
+# ---------- 평가 결과에 위원 원답(도표·역할·도표 A 과실) 저장 ----------
+def test_scenario_result_stores_reviewer_raw_answers():
+    from app.evaluation.scenarios import raw_answer, save_results, load_results
+
+    v = review_with({"checklist": [], "rationale": "r", "chart_no": "차41-1", "chart_a_is": "B", "chart_a_fault": 100,
+                     "confidence": "high", "cited_rules": []})
+    assert raw_answer(v) == "차41-1 | 도표 A=정황 B | 도표 A 과실 100"
+    none = review_with({"checklist": [], "rationale": "r", "chart_no": "", "chart_a_is": "none", "chart_a_fault": 30,
+                        "confidence": "high", "cited_rules": []})
+    assert raw_answer(none) == "- | 도표 A=도표 미사용 | 도표 A 과실 30"

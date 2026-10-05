@@ -101,6 +101,8 @@ class ScenarioResult:
     chart_any_hit: Optional[bool] = None
     reviewer_a: dict[str, int] = field(default_factory=dict)
     reviewer_notes: dict[str, str] = field(default_factory=dict)  # 위원별 판단 근거 앞부분 (오답 원인 분석용, 재실행 없이 확인)
+    # 위원별 모델 원답: "차41-1 | 도표 A=정황 B | 도표 A 과실 100" (역할 오류·이중 변환 분석용)
+    reviewer_raw: dict[str, str] = field(default_factory=dict)
     deviation: Optional[float] = None
     spread: Optional[int] = None
     needs_precise_review: Optional[bool] = None
@@ -138,6 +140,12 @@ def _reviewer_texts(report: FaultReport) -> list[str]:
     return texts
 
 
+def raw_answer(review) -> str:
+    """위원이 모델에게서 받은 도표·역할·도표 A 과실 원답 (코드가 정황 A 기준으로 환산하기 전 값)."""
+    role = {"A": "정황 A", "B": "정황 B"}.get(review.chart_a_is, "도표 미사용")
+    return f"{review.chart_no or '-'} | 도표 A={role} | 도표 A 과실 {review.chart_a_fault}"
+
+
 def evaluate_report(scenario: Scenario, report: FaultReport, *, seconds: float = 0.0, usage: dict | None = None) -> ScenarioResult:
     usage = usage or {}
     charts = mentioned_charts(_reviewer_texts(report))
@@ -165,6 +173,7 @@ def evaluate_report(scenario: Scenario, report: FaultReport, *, seconds: float =
         chart_any_hit=bool(exp & set(charts)) if exp else None,
         reviewer_a={r.perspective: r.fault_ratio_a for r in report.reviews},
         reviewer_notes={r.perspective: r.rationale[:240] for r in report.reviews},
+        reviewer_raw={r.perspective: raw_answer(r) for r in report.reviews},
         deviation=report.deviation,
         spread=report.spread,
         needs_precise_review=report.needs_precise_review,
@@ -316,7 +325,9 @@ def format_misses(results: list[ScenarioResult]) -> str:
                     f"A {r.final_a} (정답 {r.expected_ratio_a[0]}~{r.expected_ratio_a[1]})" if r.in_range is False else "",
                 ) if x
             )
-            notes = "".join(f"\n      · {p}({r.reviewer_a.get(p)}): {n}" for p, n in r.reviewer_notes.items())
+            notes = "".join(
+                f"\n      · {p}({r.reviewer_a.get(p)}): {n}  [원답 {r.reviewer_raw.get(p, '-')}]" for p, n in r.reviewer_notes.items()
+            )
             out.append(
                 f"- {r.id}: {why}\n    위원 A과실 {r.reviewer_a} (표준편차 {r.deviation}, 최대-최소 {r.spread}) "
                 f"/ 사실검증 지적 {r.fact_flagged[:2]} / 경고 {r.warnings}{notes}"

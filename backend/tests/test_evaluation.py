@@ -301,7 +301,7 @@ def test_one_outlier_of_30_points_is_flagged_even_though_stdev_is_below_old_thre
     r = _proceed([30, 0, 0])
     assert r.deviation == 14.1 and r.deviation < 15      # 표준편차만으로는 임계값(15)에 못 미친다
     assert r.spread == 30 and r.needs_precise_review     # 최대-최소로는 잡힌다
-    assert r.fault_ratio_a == 10 and r.fault_ratio_b == 90
+    assert r.fault_ratio_a == 0 and r.fault_ratio_b == 100   # 최종값은 중앙값 (평균 10 이 아님)
 
 
 def test_spread_threshold_boundary():
