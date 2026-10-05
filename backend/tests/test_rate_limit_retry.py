@@ -10,7 +10,7 @@ from app.core import llm_client
 from app.core.llm_client import LLMClient, call_with_rate_limit_retry
 from app.models.schemas import ReviewerVerdict
 
-GOOD = {"checklist": [], "rationale": "근거", "scene_a_fault": 30, "chart_no": "", "chart_a_is": "none", "chart_a_fault": 30,
+GOOD = {"checklist": [], "rationale": "근거", "scene_a_fault": 30, "chart_no": "", "chart_a_is": "none",
         "confidence": "high", "cited_rules": []}
 MSG429 = ("Rate limit reached for gpt-4o on tokens per min (TPM): Limit 30000, Used 27016, Requested 5981. "
           "Please try again in 5.994s.")
@@ -117,5 +117,5 @@ def test_openai_backend_recovers_from_429(monkeypatch, sleeps):
     llm._client = openai.AsyncOpenAI(api_key="d", max_retries=0,
                                      http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     v = asyncio.run(llm.complete_json("s", "u", ReviewerVerdict, mock=GOOD))
-    assert v.chart_a_fault == 30 and n["i"] == 3 and len(sleeps) == 2
+    assert v.scene_a_fault == 30 and n["i"] == 3 and len(sleeps) == 2
     assert llm.usage.calls == 1   # 실패한 429 호출은 토큰을 쓰지 않으므로 성공한 호출만 센다

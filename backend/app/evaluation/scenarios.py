@@ -143,7 +143,7 @@ def _reviewer_texts(report: FaultReport) -> list[str]:
 def raw_answer(review) -> str:
     """위원이 모델에게서 받은 도표·역할·도표 A 과실 원답 (코드가 정황 A 기준으로 환산하기 전 값)."""
     role = {"A": "정황 A", "B": "정황 B"}.get(review.chart_a_is, "도표 미사용")
-    return f"{review.chart_no or '-'} | 도표 A={role} | 도표 A 과실 {review.chart_a_fault} | 정황 A 과실 {review.scene_a_fault}"
+    return f"{review.chart_no or '-'} | 도표 A={role} | 정황 A 과실 {review.scene_a_fault}"
 
 
 def evaluate_report(scenario: Scenario, report: FaultReport, *, seconds: float = 0.0, usage: dict | None = None) -> ScenarioResult:
