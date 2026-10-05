@@ -58,6 +58,54 @@ class IncompleteOutput(ValueError):
 
 
 # ---------------------------------------------------------------------------
+# 속도 제한(429) 재시도
+# ---------------------------------------------------------------------------
+# 위원 3명이 동시에 호출되면 분당 토큰(TPM) 한도를 넘기 쉽다. SDK 기본 재시도(2회, 최대 8초 대기)로는 부족해서
+# 서버가 알려 준 대기 시간만큼 기다린 뒤 다시 보낸다. 한도 소진(insufficient_quota)은 기다려도 풀리지 않으므로 재시도하지 않는다.
+RATE_LIMIT_MAX_RETRIES = 6
+RATE_LIMIT_MAX_WAIT = 60.0  # 한 번에 기다리는 최대 초
+_sleep = asyncio.sleep  # 테스트에서 교체한다
+
+
+def _is_retryable_rate_limit(exc: Exception) -> bool:
+    return getattr(exc, "status_code", None) == 429 and "insufficient_quota" not in str(exc)
+
+
+def _rate_limit_delay(exc: Exception, attempt: int) -> float:
+    """서버가 알려 준 대기 시간(헤더 → 오류 문구 순)을 우선하고, 없으면 지수 백오프. 동시 재시도가 겹치지 않게 지터를 더한다."""
+    import random
+    import re
+
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    wait: float | None = None
+    try:
+        if headers is not None and headers.get("retry-after-ms"):
+            wait = float(headers["retry-after-ms"]) / 1000
+        elif headers is not None and headers.get("retry-after"):
+            wait = float(headers["retry-after"])
+    except (TypeError, ValueError):
+        wait = None
+    if wait is None:
+        m = re.search(r"try again in ([\d.]+)\s*(ms|s)\b", str(exc))
+        if m:
+            wait = float(m.group(1)) / (1000 if m.group(2) == "ms" else 1)
+    if wait is None:
+        wait = min(2.0 ** attempt, 30.0)
+    return min(wait + 0.5 + random.uniform(0, 1.0), RATE_LIMIT_MAX_WAIT)
+
+
+async def call_with_rate_limit_retry(make_request, *, max_retries: int = RATE_LIMIT_MAX_RETRIES):
+    """make_request() 를 호출하고, 429 이면 대기 후 최대 max_retries 회 다시 호출한다. 그 밖의 오류는 그대로 던진다."""
+    for attempt in range(max_retries + 1):
+        try:
+            return await make_request()
+        except Exception as e:
+            if attempt >= max_retries or not _is_retryable_rate_limit(e):
+                raise
+            await _sleep(_rate_limit_delay(e, attempt))
+
+
+# ---------------------------------------------------------------------------
 # OpenAI
 # ---------------------------------------------------------------------------
 _STRICT_DROP = {
@@ -107,7 +155,11 @@ class _OpenAIBackend:
             import openai
 
             # 파이프라인이 asyncio.gather 로 에이전트를 병렬 실행하므로 async 클라이언트를 쓴다.
+            # SDK 기본 재시도(연결 오류·5xx·짧은 429)는 그대로 두고, 그래도 남는 429 는 _create 가 이어서 처리한다.
             self._client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+
+    async def _create(self, **params):
+        return await call_with_rate_limit_retry(lambda: self._client.responses.create(**params))
 
     def _params(self, system_prompt: str, **extra) -> dict[str, Any]:
         params: dict[str, Any] = {"model": self.model, "instructions": system_prompt, **extra}
@@ -127,12 +179,12 @@ class _OpenAIBackend:
             raise RuntimeError(f"응답이 완료되지 않았습니다: {reason}")
 
     async def complete(self, system_prompt: str, user_prompt: str) -> str:
-        response = await self._client.responses.create(**self._params(system_prompt, input=user_prompt))
+        response = await self._create(**self._params(system_prompt, input=user_prompt))
         self._check(response)
         return response.output_text
 
     async def generate_json(self, system_prompt: str, user_prompt: str, model_cls: type[BaseModel]) -> str:
-        response = await self._client.responses.create(
+        response = await self._create(
             **self._params(
                 system_prompt,
                 input=user_prompt,
@@ -158,7 +210,7 @@ class _OpenAIBackend:
         input_list: list[Any] = [{"role": "user", "content": user_prompt}]
 
         for _ in range(max_iterations):
-            response = await self._client.responses.create(
+            response = await self._create(
                 **self._params(system_prompt, input=input_list, tools=spec)
             )
             self._check(response)
@@ -170,7 +222,7 @@ class _OpenAIBackend:
             input_list += await asyncio.gather(*(self._execute(by_name, c) for c in calls))
 
         # 반복 한도: 도구 없이 지금까지 얻은 정보로 답하게 한다
-        response = await self._client.responses.create(
+        response = await self._create(
             **self._params(system_prompt, input=input_list, tools=spec, tool_choice="none")
         )
         self._check(response)
@@ -201,7 +253,11 @@ class _AnthropicBackend:
         if not self.mock_mode:
             import anthropic
 
-            self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+            # tool_runner 는 내부에서 요청하므로 SDK 재시도 횟수를 늘려 둔다. complete/generate_json 은 _create 가 추가로 처리한다.
+            self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=RATE_LIMIT_MAX_RETRIES)
+
+    async def _create(self, **params):
+        return await call_with_rate_limit_retry(lambda: self._client.messages.create(**params))
 
     @staticmethod
     def _text(message) -> str:
@@ -211,7 +267,7 @@ class _AnthropicBackend:
         return "".join(b.text for b in message.content if b.type == "text")
 
     async def complete(self, system_prompt: str, user_prompt: str) -> str:
-        response = await self._client.messages.create(
+        response = await self._create(
             model=self.model,
             max_tokens=16000,
             system=system_prompt,
@@ -225,7 +281,7 @@ class _AnthropicBackend:
         # create 로 응답을 먼저 받고 직접 검증한다.
         from anthropic import transform_schema
 
-        response = await self._client.messages.create(
+        response = await self._create(
             model=self.model,
             max_tokens=16000,
             system=system_prompt,
