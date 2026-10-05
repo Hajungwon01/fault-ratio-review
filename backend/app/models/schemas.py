@@ -106,12 +106,17 @@ class ReviewerVerdict(BaseModel):
 
     1. **필드 순서 = 모델이 생성하는 순서.** 근거(checklist, rationale)를 먼저 쓰고 숫자는 맨 뒤에 둔다.
        숫자를 앞에 두면 모델이 답부터 확정하고 근거를 끼워 맞춘다.
-    2. **역할 변환은 코드가 한다.** 모델은 "도표의 A가 정황의 누구인지"(chart_a_is)와 "도표 A 입장의 과실"(chart_a_fault)만
-       답하고, 정황 A 기준 과실비율(fault_ratio_a)은 아래 프로퍼티가 계산한다. B 과실은 100 - A 라 묻지 않는다.
+    2. **같은 결론을 두 이름으로 받아 교차 검증한다.** 정황 A 기준(scene_a_fault)과 도표 기준(chart_a_is, chart_a_fault)을
+       모두 답하게 하고, 코드가 둘을 환산해 비교한다(verdict_check). 최종값은 scene_a_fault. B 과실은 100 - A 라 묻지 않는다.
+       (처음에는 도표 기준만 받아 코드가 환산했으나, 모델이 정황 값을 도표 칸에 넣어 이중 변환되는 오류가 가장 많았다.)
     """
 
     checklist: list[ChecklistItem] = Field(default_factory=list, description="관점별 체크리스트 항목별 판단")
     rationale: str = Field(..., min_length=1, description="평가 근거. 적용한 도표·가감요소·정황을 구체적으로")
+    scene_a_fault: int = Field(
+        ..., ge=0, le=100,
+        description="**정황의 A(나의 차량)** 입장의 최종 과실비율(0~100 정수). 최종 결론이며 위원 집계에 쓰인다",
+    )
     chart_no: str = Field(..., description='적용한 도표번호. 예: "차43-2". 도표를 적용하지 않았으면 빈 문자열')
     chart_a_is: Literal["A", "B", "none"] = Field(
         ..., description='도표 안의 A차량이 정황의 A(나의 차량)이면 "A", 정황의 B(상대 차량)이면 "B". 도표를 적용하지 않았으면 "none"'
@@ -128,7 +133,16 @@ class ReviewerVerdict(BaseModel):
 
     @property
     def fault_ratio_a(self) -> int:
-        """정황 A(나의 차량) 기준 과실비율. 도표의 A가 정황의 B 이면 뒤집는다."""
+        """정황 A(나의 차량) 기준 과실비율 = 모델이 직접 적은 scene_a_fault.
+
+        실측에서 모델은 근거 문장에는 정황 기준 값을 맞게 쓰고도 도표 기준 칸에 같은 값을 넣어 코드 변환이 한 번 더 뒤집는
+        오류가 가장 많았다(오답 위원 답 9개 중 6개). 그래서 최종값은 정황 기준 값을 쓰고, 도표 기준 답은 교차 검증에만 쓴다.
+        """
+        return self.scene_a_fault
+
+    @property
+    def converted_fault_a(self) -> int:
+        """도표 기준 답(chart_a_is, chart_a_fault)을 정황 A 기준으로 환산한 값 — scene_a_fault 와 같아야 한다."""
         return 100 - self.chart_a_fault if self.chart_a_is == "B" else self.chart_a_fault
 
 
@@ -146,6 +160,7 @@ class ReviewScore(BaseModel):
     chart_no: str = ""
     chart_a_is: Literal["A", "B", "none"] = "none"
     chart_a_fault: Optional[int] = None  # 도표 A 입장의 과실 (변환 전 값, 검증·분석용)
+    scene_a_fault: Optional[int] = None  # 모델이 직접 적은 정황 A 기준 과실 (fault_ratio_a 와 같다)
     warnings: list[str] = Field(default_factory=list, description="도표 기본 비율과의 불일치 등 이 평가의 신뢰 문제")
 
 

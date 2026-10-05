@@ -11,7 +11,7 @@ from app.core.llm_client import LLMClient, StructuredOutputError
 from app.core.pipeline import FaultAssessmentPipeline
 from app.models.schemas import AgentArgument, FactCheckResult, ReviewerVerdict
 
-GOOD = {"checklist": [], "rationale": "차43-2 기본 과실 30:70 적용", "chart_no": "차43-2", "chart_a_is": "A",
+GOOD = {"checklist": [], "rationale": "차43-2 기본 과실 30:70 적용", "scene_a_fault": 30, "chart_no": "차43-2", "chart_a_is": "A",
         "chart_a_fault": 30, "confidence": "high", "cited_rules": ["차43-2"]}
 
 
@@ -110,7 +110,7 @@ CTX = {
 
 
 def test_reviewer_builds_score_with_b_as_complement(monkeypatch):
-    llm, seen = make_llm(monkeypatch, [json.dumps({**GOOD, "chart_a_fault": 40})])
+    llm, seen = make_llm(monkeypatch, [json.dumps({**GOOD, "scene_a_fault": 40, "chart_a_fault": 40})])
     s = asyncio.run(ReviewerStandardAgent(llm).run(CTX))
     assert (s.fault_ratio_a, s.fault_ratio_b) == (40, 60)
     assert s.reviewer_name == "reviewer_standard_agent" and s.perspective == "기준표 적용"

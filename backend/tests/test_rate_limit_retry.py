@@ -10,7 +10,7 @@ from app.core import llm_client
 from app.core.llm_client import LLMClient, call_with_rate_limit_retry
 from app.models.schemas import ReviewerVerdict
 
-GOOD = {"checklist": [], "rationale": "근거", "chart_no": "", "chart_a_is": "none", "chart_a_fault": 30,
+GOOD = {"checklist": [], "rationale": "근거", "scene_a_fault": 30, "chart_no": "", "chart_a_is": "none", "chart_a_fault": 30,
         "confidence": "high", "cited_rules": []}
 MSG429 = ("Rate limit reached for gpt-4o on tokens per min (TPM): Limit 30000, Used 27016, Requested 5981. "
           "Please try again in 5.994s.")

@@ -16,7 +16,7 @@ from app.core.llm_client import LLMClient, StructuredOutputError, strict_json_sc
 from app.models.schemas import ReviewerVerdict
 
 GOOD = {"checklist": [{"item": "도표 선택", "finding": "차43-2"}], "rationale": "차43-2 기본 과실 30:70",
-        "chart_no": "차43-2", "chart_a_is": "A", "chart_a_fault": 30, "confidence": "high", "cited_rules": ["차43-2"]}
+        "scene_a_fault": 30, "chart_no": "차43-2", "chart_a_is": "A", "chart_a_fault": 30, "confidence": "high", "cited_rules": ["차43-2"]}
 
 
 def _resp(output, status="completed", incomplete=None):
@@ -108,7 +108,7 @@ def test_unknown_provider_rejected(monkeypatch):
 def test_strict_schema_requires_all_fields_and_closes_objects():
     s = strict_json_schema(ReviewerVerdict)
     assert s["additionalProperties"] is False
-    assert set(s["required"]) == set(s["properties"]) == {"checklist", "rationale", "chart_no", "chart_a_is", "chart_a_fault", "confidence", "cited_rules"}
+    assert set(s["required"]) == set(s["properties"]) == {"checklist", "rationale", "scene_a_fault", "chart_no", "chart_a_is", "chart_a_fault", "confidence", "cited_rules"}
     item = s["$defs"]["ChecklistItem"]
     assert item["additionalProperties"] is False and set(item["required"]) == {"item", "finding"}
     dumped = json.dumps(s)
@@ -231,7 +231,7 @@ def test_plain_complete(monkeypatch):
 
 # ---------- 에이전트 통합 ----------
 def test_reviewer_runs_through_openai_backend(monkeypatch):
-    llm, seen = make_llm(monkeypatch, [text(json.dumps({**GOOD, "chart_a_fault": 40}))])
+    llm, seen = make_llm(monkeypatch, [text(json.dumps({**GOOD, "scene_a_fault": 40, "chart_a_fault": 40}))])
     s = asyncio.run(ReviewerStandardAgent(llm).run(
         {"accident_input": "x", "rounds": [], "fact_check": None, "cited_charts": "■ 차43-2"}))
     assert (s.fault_ratio_a, s.fault_ratio_b) == (40, 60) and s.checklist[0].finding == "차43-2"

@@ -71,13 +71,17 @@ class ReviewerAgent(BaseAgent):
         "도표의 'A=…/B=…' 정의와 정황을 대조해 `도표 A = 정황 A/B` 대응을 확인하세요. "
         "A/B 에이전트가 이 대응을 틀렸다면 그 주장은 따르지 마세요.\n"
         "- **숫자는 맨 마지막에 정하세요.** JSON 필드 순서대로 먼저 checklist, rationale 로 판단을 끝낸 뒤 "
-        "chart_no, chart_a_is, chart_a_fault 를 채우세요. 근거 문장과 숫자가 모순되면 안 됩니다.\n"
-        "- chart_no: 적용한 도표번호 (적용하지 않았으면 빈 문자열). "
+        "scene_a_fault, chart_no, chart_a_is, chart_a_fault 를 채우세요. 근거 문장과 숫자가 모순되면 안 됩니다.\n"
+        "- 같은 결론을 두 가지 이름으로 적습니다. "
+        "scene_a_fault: **정황의 A(나의 차량)** 입장의 최종 과실비율(0~100 정수). 최종 결론은 이 값입니다. "
+        "chart_no: 적용한 도표번호 (적용하지 않았으면 빈 문자열). "
         "chart_a_is: 도표 안의 A차량이 정황의 A(나의 차량)이면 \"A\", 정황의 B(상대 차량)이면 \"B\", 도표를 적용하지 않았으면 \"none\". "
-        "chart_a_fault: **도표의 A차량 입장**에서의 최종 과실비율(0~100 정수) — 도표 A 의 기본 과실에 가감요소를 반영한 값입니다. "
-        "**정황의 A 로 환산하지 마세요** (환산은 시스템이 하고, B 과실은 100 에서 뺀 값입니다). chart_a_is 가 none 이면 정황 A 의 과실비율을 쓰세요.\n"
+        "chart_a_fault: **도표의 A차량 입장**에서의 최종 과실비율(0~100 정수) — 도표 A 의 기본 과실에 가감요소를 반영한 값입니다.\n"
+        "- 두 값은 반드시 서로 맞아야 합니다: chart_a_is=\"A\" 이면 scene_a_fault = chart_a_fault, "
+        "chart_a_is=\"B\" 이면 scene_a_fault = 100 - chart_a_fault, \"none\" 이면 둘이 같습니다. "
+        "맞지 않으면 시스템이 오류로 표시하니, 적기 전에 도표 A 가 누구인지 다시 확인하세요.\n"
         "- 예) 도표 차41-1 은 도표 A=뒤차 추돌(과실 100), 도표 B=앞차(과실 0)입니다. 정황의 나(A)가 정차 중이던 앞차였다면 "
-        "chart_a_is=\"B\", chart_a_fault=100 입니다 (도표 A 에 해당하는 상대 차량의 과실이 100 이므로 나의 과실은 0).\n"
+        "chart_a_is=\"B\", chart_a_fault=100, scene_a_fault=0 입니다 (도표 A 는 상대 차량이고 그 과실이 100 이므로 나의 과실은 0).\n"
         "- 도표·정황 정보가 부족해 판단이 불확실하면 confidence 를 low 로 두세요.\n"
         "- checklist 에는 위 [체크리스트] 항목을 빠짐없이, 항목 이름을 그대로 써서 항목마다 하나씩 판단을 적으세요. "
         "정황에 없는 사실은 추측하지 말고 '정황 정보 없음'이라고 쓰세요.\n"
@@ -98,6 +102,7 @@ class ReviewerAgent(BaseAgent):
             mock={
                 "checklist": [],
                 "rationale": f"[MOCK {self.perspective}] 실제 LLM 이 연결되지 않아 자리표시 평가를 반환합니다.",
+                "scene_a_fault": 50,
                 "chart_no": "",
                 "chart_a_is": "none",
                 "chart_a_fault": 50,
@@ -119,6 +124,7 @@ class ReviewerAgent(BaseAgent):
             chart_no=verdict.chart_no.strip(),
             chart_a_is=verdict.chart_a_is,
             chart_a_fault=verdict.chart_a_fault,
+            scene_a_fault=verdict.scene_a_fault,
             warnings=problems,
         )
 

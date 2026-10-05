@@ -78,7 +78,8 @@ def test_reviewers_report_in_chart_terms_and_decide_number_last():
         r = cls.OUTPUT_RULES
         assert "도표 A = 정황 A/B" in r                                   # 역할 대응 확인
         assert "숫자는 맨 마지막에" in r                                    # 근거 먼저, 숫자는 나중
-        assert "**도표의 A차량 입장**" in r and "정황의 A 로 환산하지 마세요" in r  # 변환은 시스템이
+        assert "**도표의 A차량 입장**" in r and "**정황의 A(나의 차량)** 입장" in r and "scene_a_fault" in r  # 두 이름으로 모두 답
+        assert "100 - chart_a_fault" in r                                  # 두 값의 관계(환산식)를 알려 준다
         assert 'chart_a_is=\"B\", chart_a_fault=100' in r                  # 역할 반전 예시(차41-1 앞차)
     assert "역할 대응" in ReviewerStandardAgent(LLMClient()).system_prompt
     assert "chart_a_fault" in ReviewerStandardAgent(LLMClient()).system_prompt

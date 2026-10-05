@@ -10,7 +10,7 @@ from app.core.chart_tools import build_chart_tools
 from app.core.llm_client import LLMClient
 from app.models.schemas import ReviewerVerdict
 
-GOOD = {"checklist": [], "rationale": "근거", "chart_no": "", "chart_a_is": "none", "chart_a_fault": 30,
+GOOD = {"checklist": [], "rationale": "근거", "scene_a_fault": 30, "chart_no": "", "chart_a_is": "none", "chart_a_fault": 30,
         "confidence": "high", "cited_rules": []}
 
 

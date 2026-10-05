@@ -22,6 +22,12 @@ def check_verdict(v: ReviewerVerdict, catalog: ChartCatalog | None = None) -> li
     chart_no = v.chart_no.strip()
     problems: list[str] = []
 
+    # 정황 기준 값과 도표 기준 답이 서로 맞는지: 실측에서 가장 흔한 오류(정황 값을 도표 칸에 적어 한 번 더 뒤집힘)를 잡는다
+    if v.scene_a_fault != v.converted_fault_a:
+        problems.append(
+            f"정황 A 과실 {v.scene_a_fault} 와 도표 기준 답(도표 A={v.chart_a_is}, 도표 A 과실 {v.chart_a_fault})을 정황 기준으로 "
+            f"환산한 값 {v.converted_fault_a} 가 서로 다름 — 도표 A/B 와 정황 A/B 를 혼동했을 가능성"
+        )
     if not chart_no and v.chart_a_is != "none":
         problems.append(f"도표번호 없이 도표 역할 대응(chart_a_is={v.chart_a_is})을 답함")
     if chart_no and v.chart_a_is == "none":
