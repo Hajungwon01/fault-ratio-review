@@ -53,8 +53,11 @@ def report(a=30, reviews=None, flagged=False, dev=0.0, rounds=None, fact=None):
 # ---------- 시나리오 로드·검증 ----------
 def test_dev_scenarios_load_and_cover_role_reversal_pairs():
     s = load_scenarios(DEV)
-    assert len(s) == 13 and all(x.difficulty == "명백" for x in s)
+    assert len(s) == 13
     by = {x.id: x for x in s}
+    # D09 는 상대 좌회전이 신호위반인지 비보호인지 정황에 없어 도표가 둘 다 가능한 애매 사례 (정답 도표 2개)
+    assert [x.id for x in s if x.difficulty == "애매"] == ["D09"]
+    assert by["D09"].expected_chart == ["차2-2", "차2-6"]
     # 도표 A/B 역할이 반전된 쌍: 같은 도표인데 기대 A 과실이 반대편이 된다
     assert by["D01"].expected_ratio_a == (20, 40) and by["D02"].expected_ratio_a == (60, 80)
     assert by["D03"].expected_ratio_a == (0, 10) and by["D04"].expected_ratio_a == (90, 100)
