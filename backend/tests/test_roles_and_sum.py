@@ -88,3 +88,13 @@ def test_reviewers_report_in_chart_terms_and_decide_number_last():
 def test_fact_checker_checks_applicability_and_role_mapping():
     p = FactCheckerAgent(LLMClient()).system_prompt
     assert "(4)" in p and "(5)" in p and "대응" in p and "정황 A 기준" in p
+
+
+def test_reviewers_must_quote_the_scene_for_every_modifier_they_apply():
+    # 4.1 D07: 위원 3명이 정황에 없는 B측 가산(+20)을 "통상 그렇다"며 적용해 A 20 → 0 으로 내림
+    for cls in (ReviewerStandardAgent, ReviewerSceneAgent, ReviewerPrecedentAgent):
+        r = cls.OUTPUT_RULES
+        assert "가감요소는 정황에 적힌 사실이 있을 때만" in r
+        assert "정황 문장 그대로 인용" in r and "근거가 아닙니다" in r      # 추정 금지 + 인용 형식
+        assert "해석이 갈리면 적용하지 말고 기본 비율을 유지" in r           # 애매하면 미적용
+        assert "20%p 넘게" in r                                              # 큰 이동은 재확인
