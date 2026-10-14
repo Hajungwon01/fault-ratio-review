@@ -99,14 +99,14 @@ def review(chart="차2-6", fault=10, conf="high"):
                        chart_no=chart, chart_a_is="B", scene_a_fault=fault, confidence=conf)
 
 
-def ctx(reviews=None):
+def ctx(reviews=None, cited=("차2-2", "차2-5", "차2-6")):
     # 기본: 위원들이 서로 다른 도표를 골라 질문 생성이 열리는 상황 (실제 D09)
     reviews = reviews or [review("차2-6"), review("차2-2", 0), review("차2-6")]
-    return {"accident_input": "x", "reviews": reviews, "cited_charts": "■ 차2-2 ■ 차2-6"}
+    return {"accident_input": "x", "reviews": reviews, "cited_charts": "■ 차2-2 ■ 차2-6", "cited_chart_numbers": list(cited)}
 
 
-def run_plan(q, reviews=None):
-    return asyncio.run(plan_clarification(PlanLLM(plan_for(q)), ctx(reviews)))
+def run_plan(q, reviews=None, cited=("차2-2", "차2-5", "차2-6")):
+    return asyncio.run(plan_clarification(PlanLLM(plan_for(q)), ctx(reviews, cited)))
 
 
 def test_question_is_kept_when_outcomes_differ_a_lot():
@@ -130,7 +130,8 @@ def test_options_that_contradict_chart_data_are_dropped_with_warning():
     questions, note, warnings = run_plan(bad)
     assert questions == [] and warnings and "질문을 생략" in warnings[0]
     nonexistent = question([opt("가", "차99-9", 0), opt("나", "차2-6", 60)])
-    assert run_plan(nonexistent)[0] == [] and "존재하지 않는" in run_plan(nonexistent)[2][0]
+    cited = ("차2-2", "차2-6", "차99-9")                # 인용 목록에 있어도 데이터에 없는 도표는 검증이 막는다
+    assert run_plan(nonexistent, cited=cited)[0] == [] and "존재하지 않는" in run_plan(nonexistent, cited=cited)[2][0]
 
 
 def test_duplicate_options_are_dropped():
@@ -219,3 +220,16 @@ def test_any_role_check_accepts_either_orientation():
     assert check_scene_vs_chart_any_role("차2-6", 10) == [] and check_scene_vs_chart_any_role("차2-6", 90) == []
     assert check_scene_vs_chart_any_role("차2-2", 50)                                                              # 어느 쪽도 아님
     assert "존재하지 않는" in check_scene_vs_chart_any_role("차99-9", 0)[0]
+
+
+# ---------- 보기의 도표는 A/B 에이전트·위원이 인용한 것만 ----------
+def test_option_with_uncited_chart_is_removed_and_may_drop_the_question():
+    # 실제 D09: 정황과 맞지 않는 차2-1 이 보기로 끼어들었던 사례
+    q = question([opt("가", "차2-2", 0), opt("나", "차2-6", 60), opt("다", "차2-1", 0)])
+    questions, note, warnings = run_plan(q, cited=("차2-2", "차2-6"))
+    assert len(questions) == 1 and [o.chart_no for o in questions[0].options] == ["차2-2", "차2-6"]
+    assert warnings and "차2-1" in warnings[0] and "인용되지 않은" in warnings[0]
+
+    only_one_left = question([opt("가", "차2-2", 0), opt("나", "차2-1", 60)])
+    questions, note, warnings = run_plan(only_one_left, cited=("차2-2",))
+    assert questions == [] and note == "" and "인용되지 않은" in warnings[0]

@@ -153,6 +153,16 @@ async def plan_clarification(llm, context: dict[str, Any]):
 
     q = plan.questions[0]
     warnings: list[str] = []
+    # 보기의 도표는 A/B 에이전트나 위원이 실제로 인용한 도표로 제한한다 (정황과 안 맞는 도표가 보기로 끼어드는 것 방지)
+    allowed = set(context.get("cited_chart_numbers") or []) | {r.chart_no for r in context["reviews"] if r.chart_no}
+    if allowed:
+        kept = [o for o in q.options if o.chart_no.strip() in allowed]
+        if len(kept) < len(q.options):
+            dropped = sorted({o.chart_no for o in q.options} - allowed)
+            warnings.append(f"질문 단계: 인용되지 않은 도표를 쓴 보기를 제외했습니다 ({', '.join(dropped)})")
+            if len(kept) < 2:
+                return [], "", warnings
+            q = q.model_copy(update={"options": kept})
     problems = [p for o in q.options for p in check_scene_vs_chart_any_role(o.chart_no.strip(), o.scene_a_fault)]
     if problems:
         warnings.append(f"질문 단계: 보기의 도표·과실이 도표 데이터와 맞지 않아 질문을 생략했습니다 ({problems[0]})")

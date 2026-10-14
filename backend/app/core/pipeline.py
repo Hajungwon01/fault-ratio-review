@@ -92,6 +92,7 @@ class FaultAssessmentPipeline:
             "rounds": rounds,
             "fact_check": fact_check,
             "cited_charts": format_cited_charts(cited),
+            "cited_chart_numbers": list(cited),
             "precedents": format_precedents(cited),
         }
         results = await asyncio.gather(*(r.run(reviewer_context) for r in self.reviewers), return_exceptions=True)

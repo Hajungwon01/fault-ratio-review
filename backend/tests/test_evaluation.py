@@ -53,17 +53,20 @@ def report(a=30, reviews=None, flagged=False, dev=0.0, rounds=None, fact=None):
 # ---------- 시나리오 로드·검증 ----------
 def test_dev_scenarios_load_and_cover_role_reversal_pairs():
     s = load_scenarios(DEV)
-    assert len(s) == 13
+    assert len(s) == 15
     by = {x.id: x for x in s}
     # D09 는 상대 좌회전이 신호위반인지 비보호인지 정황에 없어 도표가 둘 다 가능한 애매 사례 (정답 도표 2개)
-    assert [x.id for x in s if x.difficulty == "애매"] == ["D09"]
+    assert [x.id for x in s if x.difficulty == "애매"] == ["D09", "D14", "D15"]
+    # 질문 단계 점검용: 결과가 크게 갈리는 D14·D15 는 질문이 필요하고(정답 범위는 정하지 않음), D01·D09 는 질문이 불필요하다
+    assert {x.id: x.expects_question for x in s if x.expects_question is not None} == {"D01": False, "D09": False, "D14": True, "D15": True}
+    assert by["D14"].expected_ratio_a is None and by["D15"].expected_ratio_a is None and by["D15"].expected_chart == ["차6-1"]
     assert by["D09"].expected_chart == ["차2-2", "차2-6"]
     # 도표 A/B 역할이 반전된 쌍: 같은 도표인데 기대 A 과실이 반대편이 된다
     assert by["D01"].expected_ratio_a == (20, 40) and by["D02"].expected_ratio_a == (60, 80)
     assert by["D03"].expected_ratio_a == (0, 10) and by["D04"].expected_ratio_a == (90, 100)
     assert by["D10"].expected_ratio_a == (90, 100) and by["D11"].expected_ratio_a == (0, 10)
     assert sum("역할 반전" in x.note for x in s) == 6
-    assert all(x.expected_ratio_a[1] - x.expected_ratio_a[0] <= 20 for x in s)
+    assert all(x.expected_ratio_a[1] - x.expected_ratio_a[0] <= 20 for x in s if x.expected_ratio_a)
 
 
 def test_load_accepts_list_and_single_chart_string(tmp_path):
@@ -178,7 +181,7 @@ def test_run_all_new_pipeline_per_scenario_keeps_order_and_calls_callback():
 def test_real_pipeline_mock_mode_runs_all_dev_scenarios_offline():
     scenarios = load_scenarios(DEV)
     results = asyncio.run(run_all(scenarios, FaultAssessmentPipeline))
-    assert len(results) == 13 and all(r.ok for r in results)
+    assert len(results) == 15 and all(r.ok for r in results)
     assert all(r.calls == 0 and r.input_tokens == 0 for r in results)  # mock 모드는 실제 호출이 없다
     assert all(r.final_a == 50 for r in results)                        # mock 위원은 전부 50
 

@@ -40,6 +40,8 @@ class Scenario(BaseModel):
     expected_chart: list[str] = Field(default_factory=list)
     expected_ratio_a: Optional[tuple[int, int]] = None  # 정답 A 과실 범위 [하한, 상한]
     expected_modifiers: list[str] = Field(default_factory=list)
+    # 정황에 없는 사실로 결과가 크게 갈려 사용자에게 질문해야 하는 사례면 True, 질문이 불필요한 사례면 False, 채점하지 않으면 None
+    expects_question: Optional[bool] = None
     note: str = ""
 
     @field_validator("expected_chart", mode="before")
@@ -106,6 +108,8 @@ class ScenarioResult:
     reviewer_confidence: dict[str, str] = field(default_factory=dict)  # 위원별 확신(high/medium/low) — 플래그 기준 조정용
     flag_reasons: list[str] = field(default_factory=list)
     needs_clarification: bool = False
+    expects_question: Optional[bool] = None
+    clarification_hit: Optional[bool] = None   # expects_question 이 있을 때 needs_clarification 과 일치하는지
     clarification: str = ""        # 만든 질문과 보기별 (도표, 정황 A 과실). 질문이 없으면 참고 문구
     deviation: Optional[float] = None
     spread: Optional[int] = None
@@ -191,6 +195,8 @@ def evaluate_report(scenario: Scenario, report: FaultReport, *, seconds: float =
         reviewer_confidence={r.perspective: r.confidence for r in report.reviews},
         flag_reasons=list(report.flag_reasons),
         needs_clarification=report.needs_clarification,
+        expects_question=scenario.expects_question,
+        clarification_hit=None if scenario.expects_question is None else report.needs_clarification == scenario.expects_question,
         clarification=format_clarification(report),
         deviation=report.deviation,
         spread=report.spread,
@@ -283,6 +289,7 @@ def summarize(results: list[ScenarioResult]) -> dict[str, Any]:
         "ambiguous_flag_rate": _rate([r.needs_precise_review for r in ambiguous]) if ambiguous else None,
         "clear_flag_rate": _rate([r.needs_precise_review for r in clear]) if clear else None,
         "fact_flagged_rate": _rate([bool(r.fact_flagged) for r in ok]),
+        "clarify_hit": _rate([r.clarification_hit for r in ok]),
         "mean_seconds": round(sum(r.seconds for r in results) / len(results), 1) if results else 0.0,
         "calls": sum(r.calls for r in results),
         "input_tokens": sum(r.input_tokens for r in results),

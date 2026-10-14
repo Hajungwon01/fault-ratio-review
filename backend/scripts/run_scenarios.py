@@ -65,6 +65,8 @@ async def run_for_model(args, scenarios, set_name: str, model: str | None):
     probe = FaultAssessmentPipeline().llm
     provider = probe.provider
     label = f"{provider}:{probe.model or '(미설정)'}/{s.chart_search_mode}" + (f"/effort={s.openai_reasoning_effort}" if s.openai_reasoning_effort and provider == "openai" else "")
+    if args.force_clarify:
+        label += "/FORCE-CLARIFY"  # 일반 실행과 결과 파일·비교를 섞지 않는다
     if probe.mock_mode:
         # mock 결과는 실제 실행과 라벨·파일명을 분리한다 (--resume 이 mock 결과를 실제 결과처럼 건너뛰는 사고 방지)
         label += "/MOCK"
@@ -121,8 +123,15 @@ async def main() -> int:
     ap.add_argument("--allow-mock", action="store_true", help="키 없이 mock 으로 구조만 실행")
     ap.add_argument("--price-in", type=float, help="입력 100만 토큰당 단가 (비용 계산용)")
     ap.add_argument("--price-out", type=float, help="출력 100만 토큰당 단가 (비용 계산용)")
+    ap.add_argument("--force-clarify", action="store_true",
+                    help="질문 생성 조건(위원 모호함 신호)을 무시하고 항상 질문 생성을 시도 — 질문 품질 점검용. 결과 라벨에 /FORCE-CLARIFY 가 붙는다")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
+
+    if args.force_clarify:
+        import app.agents.orchestrator as orchestrator
+
+        orchestrator.ambiguity_signals = lambda reviews: ["강제 실행(--force-clarify)"]
 
     scenarios = load_scenarios(args.set)  # 형식·id 중복·정답 도표 오타를 먼저 검증
     if args.ids:
