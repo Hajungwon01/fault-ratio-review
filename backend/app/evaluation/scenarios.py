@@ -105,6 +105,8 @@ class ScenarioResult:
     reviewer_raw: dict[str, str] = field(default_factory=dict)
     reviewer_confidence: dict[str, str] = field(default_factory=dict)  # 위원별 확신(high/medium/low) — 플래그 기준 조정용
     flag_reasons: list[str] = field(default_factory=list)
+    needs_clarification: bool = False
+    clarification: str = ""        # 만든 질문과 보기별 (도표, 정황 A 과실). 질문이 없으면 참고 문구
     deviation: Optional[float] = None
     spread: Optional[int] = None
     needs_precise_review: Optional[bool] = None
@@ -140,6 +142,16 @@ def _reviewer_texts(report: FaultReport) -> list[str]:
     if not any(CHART_RE.search(t) for t in texts):  # 위원이 도표를 안 적었으면 2라운드 논증으로 대체
         texts = [a.content for a in report.rounds if a.round == max((x.round for x in report.rounds), default=1)]
     return texts
+
+
+def format_clarification(report) -> str:
+    """평가 결과에 남길 질문 요약 (내부용: 보기별 도표·과실 포함)."""
+    if not report.clarifications:
+        return report.clarification_note
+    return " || ".join(
+        f"{q.question} [" + " / ".join(f"{o.label} → {o.chart_no}, A {o.scene_a_fault}" for o in q.options) + "]"
+        for q in report.clarifications
+    )
 
 
 def raw_answer(review) -> str:
@@ -178,6 +190,8 @@ def evaluate_report(scenario: Scenario, report: FaultReport, *, seconds: float =
         reviewer_raw={r.perspective: raw_answer(r) for r in report.reviews},
         reviewer_confidence={r.perspective: r.confidence for r in report.reviews},
         flag_reasons=list(report.flag_reasons),
+        needs_clarification=report.needs_clarification,
+        clarification=format_clarification(report),
         deviation=report.deviation,
         spread=report.spread,
         needs_precise_review=report.needs_precise_review,

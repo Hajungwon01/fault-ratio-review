@@ -79,3 +79,69 @@ class ProceedingAgent(BaseAgent):
             fact_check=context.get("fact_check"),
             reviews=reviews,
         )
+
+
+# ---------------------------------------------------------------------------
+# 질문 단계 (사고 당사자용): 정황에 없는 사실 때문에 결과가 갈리면 사용자에게 물을 질문 1개를 만든다
+# ---------------------------------------------------------------------------
+CLARIFY_MIN_DIFF = 10  # 보기별 정황 A 과실의 최대-최소가 이를 넘을 때만 사용자에게 묻는다 (이하는 참고 문구만)
+
+CLARIFY_PROMPT = (
+    "당신은 과실비율 검토에서 '사고 정황에 적혀 있지 않은 사실' 때문에 결과가 달라지는 지점을 찾아, 사용자에게 물을 질문 하나를 만드는 진행 에이전트입니다.\n\n"
+    "[질문이 필요한 경우]\n"
+    f"- 정황에 없는 사실 하나에 따라 적용 도표가 달라지거나, 같은 도표 안에서도 정황 A 과실이 {CLARIFY_MIN_DIFF}%p 넘게 달라질 때만 만드세요.\n"
+    "- 정황으로 이미 정해지거나, 사실에 따라 달라져도 차이가 작으면 만들지 마세요 (questions 는 빈 목록).\n"
+    "- 가장 영향이 큰 질문 1개만 만드세요. 위원들의 결론과 근거를 참고해 어떤 사실이 비워져 있는지 찾으세요.\n\n"
+    "[질문 작성 규칙 — 사용자가 유리한 답을 고르지 못하게]\n"
+    "- 관찰하거나 기억할 수 있는 사실을 묻습니다 (신호 색, 표지 유무, 진입 순서, 속도 구간 등). "
+    "\"신호위반이었나요?\"처럼 법적 결론을 묻거나 용어로 결과를 암시하지 마세요.\n"
+    "- 보기(label)는 사실만 적고 과실비율·도표번호·\"유리/불리\" 같은 암시를 쓰지 마세요. 보기 길이와 어조를 비슷하게 하세요.\n"
+    "- 보기는 서로 겹치지 않게 2~4개. \"모름\"은 시스템이 추가하므로 쓰지 마세요.\n"
+    "- 보기마다 그 답이 맞을 때의 도표번호(chart_no)와 결과를 적습니다. 도표번호는 [인용 도표 상세]에 있는 것만 쓰세요.\n"
+    "- chart_a_is: 그 도표의 A차량이 정황의 A(나의 차량)이면 \"A\", 정황의 B(상대 차량)이면 \"B\". "
+    "scene_a_fault: 그 보기가 맞을 때 **정황의 A(나의 차량)** 입장의 최종 과실비율 (도표의 A 기준이 아니라 정황 기준).\n"
+    "- evidence: 그 사실을 확인할 수 있는 증거 (블랙박스, 신호 주기 기록, 경찰 조사 등)를 적습니다.\n"
+    "- 주어진 [인용 도표 상세] 밖의 도표번호·비율을 만들어 쓰지 마세요."
+)
+
+
+def _format_review_summary(reviews) -> str:
+    return "\n".join(
+        f"- {r.perspective}: 도표 {r.chart_no or '-'}, 도표 A=정황 {r.chart_a_is}, 정황 A 과실 {r.scene_a_fault}\n  근거: {r.rationale.strip()[:200]}"
+        for r in reviews
+    )
+
+
+async def plan_clarification(llm, context: dict[str, Any]):
+    """위원 결과와 정황으로 질문을 만든다. 반환: (질문 목록(0~1개), 참고 문구, 경고 목록).
+
+    질문이 필요 없으면 빈 목록. 보기가 도표 데이터와 어긋나면(없는 도표, 기본 비율과 크게 다른 값) 질문을 버리고 경고만 남긴다.
+    보기별 결과 차이가 CLARIFY_MIN_DIFF 이하면 사용자에게 묻지 않고 참고 문구만 돌려준다.
+    """
+    from app.core.verdict_check import check_scene_vs_chart
+    from app.models.schemas import ClarificationPlan
+
+    user_prompt = (
+        f"[사고 정황]\n{context['accident_input']}\n\n"
+        f"[검토위원 결론]\n{_format_review_summary(context['reviews'])}\n\n"
+        f"[인용 도표 상세]\n{context.get('cited_charts', '(없음)')}\n"
+    )
+    plan = await llm.complete_json(CLARIFY_PROMPT, user_prompt, ClarificationPlan, mock={"questions": []})
+    if not plan.questions:
+        return [], "", []
+
+    q = plan.questions[0]
+    warnings: list[str] = []
+    problems = [p for o in q.options for p in check_scene_vs_chart(o.chart_no.strip(), o.chart_a_is, o.scene_a_fault)]
+    if problems:
+        warnings.append(f"질문 단계: 보기의 도표·과실이 도표 데이터와 맞지 않아 질문을 생략했습니다 ({problems[0]})")
+        return [], "", warnings
+    if len({o.label.strip() for o in q.options}) < len(q.options):
+        warnings.append("질문 단계: 보기가 중복되어 질문을 생략했습니다")
+        return [], "", warnings
+
+    faults = [o.scene_a_fault for o in q.options]
+    if max(faults) - min(faults) <= CLARIFY_MIN_DIFF:
+        detail = ", ".join(f"{o.chart_no} 적용 시 A {o.scene_a_fault}" for o in q.options)
+        return [], f"정황에 없는 사실에 따라 적용 도표가 달라질 수 있으나 결과 차이는 작습니다 ({detail})", warnings
+    return [q], "", warnings

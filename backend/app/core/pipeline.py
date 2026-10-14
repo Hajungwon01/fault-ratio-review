@@ -11,7 +11,7 @@ import asyncio
 import logging
 
 from app.agents.fact_checker import FactCheckerAgent
-from app.agents.orchestrator import ProceedingAgent
+from app.agents.orchestrator import ProceedingAgent, plan_clarification
 from app.agents.reviewer_precedent import ReviewerPrecedentAgent
 from app.agents.reviewer_scene import ReviewerSceneAgent
 from app.agents.reviewer_standard import ReviewerStandardAgent
@@ -122,5 +122,17 @@ class FaultAssessmentPipeline:
         if any(rv.warnings for rv in reviews):
             report.needs_precise_review = True
             report.flag_reasons.append("위원 평가가 도표 기본 비율 등과 어긋남 (경고 참고)")
+        # 질문 단계: 정황에 없는 사실 때문에 결과가 크게 갈리면 사용자에게 물을 질문을 만든다 (실패해도 심사 결과는 유지)
+        try:
+            questions, note, q_warnings = await plan_clarification(
+                self.llm, {**reviewer_context, "reviews": reviews}
+            )
+            report.clarifications = questions
+            report.needs_clarification = bool(questions)
+            report.clarification_note = note
+            warnings += q_warnings
+        except Exception as e:  # noqa: BLE001 - 보조 단계라 실패해도 본 결과를 막지 않는다
+            logger.warning("질문 생성 실패: %s", e)
+            warnings.append(f"질문 단계를 건너뛰었습니다 ({type(e).__name__}).")
         report.warnings = warnings
         return report

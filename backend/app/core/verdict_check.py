@@ -29,22 +29,31 @@ def check_verdict(v: ReviewerVerdict, catalog: ChartCatalog | None = None) -> li
     if not chart_no:
         return problems
 
+    if v.chart_a_is == "none":
+        chart = catalog.get(chart_no)
+        return problems + ([f"존재하지 않는 도표번호 {chart_no}"] if chart is None else [])
+    return problems + check_scene_vs_chart(chart_no, v.chart_a_is, v.scene_a_fault, catalog)
+
+
+def check_scene_vs_chart(chart_no: str, chart_a_is: str, scene_a_fault: int, catalog: ChartCatalog | None = None) -> list[str]:
+    """정황 A 기준 과실이 해당 도표의 기본 비율(chart_a_is 로 정황 기준으로 바꾼 값)과 크게 어긋나는지.
+
+    위원 평가(check_verdict)와 질문 단계의 선택지 검증이 같이 쓴다.
+    """
+    catalog = catalog or get_catalog()
     chart = catalog.get(chart_no)
     if chart is None:
-        problems.append(f"존재하지 않는 도표번호 {chart_no}")
-        return problems
-    if v.chart_a_is == "none":
-        return problems
+        return [f"존재하지 않는 도표번호 {chart_no}"]
 
     # 도표의 A 가 정황의 누구인지(chart_a_is)에 따라 도표 기본 비율을 정황 A 기준으로 바꿔 모델이 낸 정황 A 과실과 비교한다
-    flip = v.chart_a_is == "B"
+    flip = chart_a_is == "B"
     bases = sorted({(100 - var["base_ratio"]["a"]) if flip else var["base_ratio"]["a"] for var in chart["variants"]})
-    nearest = min(bases, key=lambda b: abs(b - v.scene_a_fault))
-    gap = abs(nearest - v.scene_a_fault)
+    nearest = min(bases, key=lambda b: abs(b - scene_a_fault))
+    gap = abs(nearest - scene_a_fault)
     if gap > MAX_DEVIATION_FROM_BASE:
-        problems.append(
+        return [
             f"도표 {chart_no} 의 기본 과실을 정황 A 기준으로 바꾸면 {'/'.join(map(str, bases))}"
-            f"(도표 A=정황 {v.chart_a_is} 로 답함)인데 모델이 답한 정황 A 과실 {v.scene_a_fault} 가 "
+            f"(도표 A=정황 {chart_a_is} 로 답함)인데 모델이 답한 정황 A 과실 {scene_a_fault} 가 "
             f"{gap}%p 차이 — 가감요소로 설명하기 어려운 폭 (값 또는 A/B 역할 오류 의심)"
-        )
-    return problems
+        ]
+    return []

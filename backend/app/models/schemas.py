@@ -154,6 +154,29 @@ class ReviewScore(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="도표 기본 비율과의 불일치 등 이 평가의 신뢰 문제")
 
 
+class QuestionOption(BaseModel):
+    """질문의 답 보기 하나. label 만 사용자에게 보이고, 나머지(도표·과실)는 내부용이다 (clarify.user_view 가 숨긴다)."""
+
+    label: str = Field(..., description="사실만 적은 답 보기. 어느 쪽이 유리한지, 도표번호·과실비율을 암시하는 표현 금지")
+    chart_no: str = Field(..., description="이 답이 맞을 때 적용되는 도표번호 (주어진 도표 안에서)")
+    chart_a_is: Literal["A", "B"] = Field(..., description="그 도표의 A차량이 정황의 A(나)이면 A, 정황의 B(상대)이면 B")
+    scene_a_fault: int = Field(..., ge=0, le=100, description="이 답이 맞을 때 **정황의 A(나)** 입장의 과실비율")
+
+
+class ClarifyingQuestion(BaseModel):
+    """정황에 없는 사실 때문에 적용 도표나 결과가 갈릴 때, 사용자에게 묻는 사실 질문."""
+
+    question: str = Field(..., description="관찰 가능한 사실을 묻는 중립적 질문. 법적 결론(신호위반인가요 등)이나 결과를 암시하지 않는다")
+    options: list[QuestionOption] = Field(..., min_length=2, max_length=4, description="서로 겹치지 않는 답 보기 (모름은 시스템이 추가)")
+    evidence: str = Field(..., description="이 질문의 답을 확인할 수 있는 증거 (블랙박스, 신호 주기 기록, 경찰 조사 등)")
+
+
+class ClarificationPlan(BaseModel):
+    """진행 에이전트가 구조화 출력으로 돌려주는 질문 계획. 질문이 필요 없으면 빈 목록, 필요해도 가장 영향이 큰 1개만."""
+
+    questions: list[ClarifyingQuestion] = Field(default_factory=list, max_length=1)
+
+
 class FaultReport(BaseModel):
     """진행 에이전트가 생성하는 최종 "몇 대 몇" 심사 리포트."""
 
@@ -163,6 +186,11 @@ class FaultReport(BaseModel):
     deviation: float = Field(..., description="검토위원 간 과실비율 편차(표준편차 등)")
     spread: int = Field(0, description="검토위원 A과실비율의 최대-최소 차이(%p). 표준편차가 이상치 한 명을 놓치는 것을 보완")
     flag_reasons: list[str] = Field(default_factory=list, description="정밀 심사 플래그가 켜진 이유 (꺼져 있으면 빈 목록)")
+    clarifications: list[ClarifyingQuestion] = Field(
+        default_factory=list, description="[내부용: 보기별 도표·과실 포함] 결과가 크게 갈려 사용자에게 물어볼 질문. 사용자에게는 clarify.user_view 로 숨겨 보여 준다"
+    )
+    needs_clarification: bool = Field(False, description="clarifications 의 보기별 결과 차이가 임계값을 넘어 질문이 필요한지")
+    clarification_note: str = Field("", description="도표가 갈려도 결과 차이가 작아 묻지 않은 경우의 참고 문구")
     needs_precise_review: bool = Field(
         ..., description="편차가 임계값을 넘어 정밀 심사가 필요한 사고인지 여부"
     )
