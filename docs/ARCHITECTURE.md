@@ -2,7 +2,7 @@
 
 ## 파이프라인 흐름
 
-1. 사용자가 사고 정황 입력 (`AccidentInput`)
+1. 사고 당사자가 사고 정황 입력 (`AccidentInput`) — (예정) 정황에 없어서 도표가 갈리면 결과를 숨긴 사실 질문 단계 추가
 2. `VehicleAAgent` / `VehicleBAgent` 가 병렬로 1차 논증 생성
 3. `FactCheckerAgent` 가 양측 인용 기준표·법조항 적용 검증
 4. A/B 에이전트 2라운드 반박
