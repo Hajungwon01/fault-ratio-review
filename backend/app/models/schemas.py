@@ -162,6 +162,7 @@ class FaultReport(BaseModel):
     basis: str
     deviation: float = Field(..., description="검토위원 간 과실비율 편차(표준편차 등)")
     spread: int = Field(0, description="검토위원 A과실비율의 최대-최소 차이(%p). 표준편차가 이상치 한 명을 놓치는 것을 보완")
+    flag_reasons: list[str] = Field(default_factory=list, description="정밀 심사 플래그가 켜진 이유 (꺼져 있으면 빈 목록)")
     needs_precise_review: bool = Field(
         ..., description="편차가 임계값을 넘어 정밀 심사가 필요한 사고인지 여부"
     )

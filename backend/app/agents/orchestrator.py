@@ -22,6 +22,10 @@ from app.models.schemas import FaultReport
 # 그래서 사람이 직관적으로 이해하는 "위원 간 최대-최소 차이(spread)"를 함께 쓴다.
 SPREAD_THRESHOLD = 20      # 위원 A과실의 최대-최소 차이(%p)
 DEVIATION_THRESHOLD = 15.0  # 위원 A과실의 모집단 표준편차
+# 위원이 숫자는 일치해도 스스로 "확신 낮음"이라고 답한 경우: 애매한 사례(예: 도표가 둘 다 가능한 D09)는 위원 숫자가 우연히 일치하면
+# 위 두 기준으로는 드러나지 않았다. 몇 명 이상이 low 일 때 켤지는 초기값이며 평가셋 실측 후 조정한다 (#13).
+# (위원 평가가 도표 기본 비율과 어긋나 신뢰도가 low 로 내려간 경우는 pipeline 이 별도로 플래그를 켠다)
+LOW_CONFIDENCE_REVIEWERS = 2
 
 
 class ProceedingAgent(BaseAgent):
@@ -49,13 +53,23 @@ class ProceedingAgent(BaseAgent):
             f"검토위원 평가: {reviews}\n중앙값 A과실: {avg_a}, 편차: {deviation}",
         )
 
+        reasons: list[str] = []
+        if spread >= SPREAD_THRESHOLD:
+            reasons.append(f"위원 간 과실비율 차이가 큼 (최대-최소 {spread}%p)")
+        if deviation > DEVIATION_THRESHOLD:
+            reasons.append(f"위원 간 과실비율 편차가 큼 (표준편차 {deviation})")
+        low = [r.perspective for r in reviews if r.confidence == "low"]
+        if len(low) >= LOW_CONFIDENCE_REVIEWERS:
+            reasons.append(f"위원 {len(low)}명이 확신 낮음으로 답함 ({', '.join(low)})")
+
         return FaultReport(
             fault_ratio_a=avg_a,
             fault_ratio_b=avg_b,
             basis=basis,
             deviation=deviation,
             spread=spread,
-            needs_precise_review=spread >= SPREAD_THRESHOLD or deviation > DEVIATION_THRESHOLD,
+            flag_reasons=reasons,
+            needs_precise_review=bool(reasons),
             rounds=context.get("rounds", []),
             fact_check=context.get("fact_check"),
             reviews=reviews,

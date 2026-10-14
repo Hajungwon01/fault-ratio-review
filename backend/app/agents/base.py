@@ -109,7 +109,7 @@ class ReviewerAgent(BaseAgent):
                 "scene_a_fault": 50,
                 "chart_no": "",
                 "chart_a_is": "none",
-                "confidence": "low",
+                "confidence": "medium",  # mock 은 자리표시라 "확신 낮음" 플래그가 항상 켜지지 않도록 medium
                 "cited_rules": [],
             },
         )

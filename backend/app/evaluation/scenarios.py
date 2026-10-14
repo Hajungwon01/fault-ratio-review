@@ -103,6 +103,8 @@ class ScenarioResult:
     reviewer_notes: dict[str, str] = field(default_factory=dict)  # 위원별 판단 근거 앞부분 (오답 원인 분석용, 재실행 없이 확인)
     # 위원별 모델 원답: "차41-1 | 도표 A=정황 B | 도표 A 과실 100" (역할 오류·이중 변환 분석용)
     reviewer_raw: dict[str, str] = field(default_factory=dict)
+    reviewer_confidence: dict[str, str] = field(default_factory=dict)  # 위원별 확신(high/medium/low) — 플래그 기준 조정용
+    flag_reasons: list[str] = field(default_factory=list)
     deviation: Optional[float] = None
     spread: Optional[int] = None
     needs_precise_review: Optional[bool] = None
@@ -174,6 +176,8 @@ def evaluate_report(scenario: Scenario, report: FaultReport, *, seconds: float =
         reviewer_a={r.perspective: r.fault_ratio_a for r in report.reviews},
         reviewer_notes={r.perspective: r.rationale[:240] for r in report.reviews},
         reviewer_raw={r.perspective: raw_answer(r) for r in report.reviews},
+        reviewer_confidence={r.perspective: r.confidence for r in report.reviews},
+        flag_reasons=list(report.flag_reasons),
         deviation=report.deviation,
         spread=report.spread,
         needs_precise_review=report.needs_precise_review,

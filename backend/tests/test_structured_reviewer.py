@@ -130,4 +130,4 @@ def test_pipeline_reviews_in_mock_mode_are_valid_scores():
         __import__("app.models.schemas", fromlist=["AccidentInput"]).AccidentInput(
             description="녹색 신호에 직진하는데 맞은편 차량이 좌회전하며 충돌했습니다")))
     assert len(r.reviews) == 3 and all(x.fault_ratio_a + x.fault_ratio_b == 100 for x in r.reviews)
-    assert all(x.confidence == "low" and "MOCK" in x.rationale for x in r.reviews)
+    assert all(x.confidence == "medium" and "MOCK" in x.rationale for x in r.reviews)

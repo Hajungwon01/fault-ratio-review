@@ -164,3 +164,43 @@ def test_scenario_result_stores_reviewer_raw_answers():
     assert raw_answer(review_with(payload())) == "차41-1 | 도표 A=정황 B | 정황 A 과실 0"
     none = review_with(payload(chart_no="", chart_a_is="none", scene_a_fault=30))
     assert raw_answer(none) == "- | 도표 A=도표 미사용 | 정황 A 과실 30"
+
+
+# ---------- 확신 낮음(low) 위원이 여럿이면 숫자가 일치해도 정밀 심사 ----------
+def report_with_confidence(levels, ratios=None):
+    from app.agents.orchestrator import ProceedingAgent
+    from app.models.schemas import ReviewScore
+
+    ratios = ratios or [10] * len(levels)
+    reviews = [ReviewScore(reviewer_name=f"r{i}", perspective=f"p{i}", fault_ratio_a=a, fault_ratio_b=100 - a,
+                           rationale="r", confidence=c) for i, (a, c) in enumerate(zip(ratios, levels))]
+    return asyncio.run(ProceedingAgent(LLMClient()).run({"reviews": reviews}))
+
+
+def test_two_low_confidence_reviewers_flag_even_when_numbers_agree():
+    r = report_with_confidence(["low", "low", "high"])           # 숫자는 10/10/10 으로 일치
+    assert r.spread == 0 and r.needs_precise_review is True
+    assert len(r.flag_reasons) == 1 and "확신 낮음" in r.flag_reasons[0] and "p0" in r.flag_reasons[0]
+
+
+@pytest.mark.parametrize("levels", [["high", "high", "high"], ["low", "high", "high"], ["medium", "medium", "low"], ["medium"] * 3])
+def test_fewer_than_two_low_confidence_do_not_flag(levels):
+    r = report_with_confidence(levels)
+    assert r.needs_precise_review is False and r.flag_reasons == []
+
+
+def test_flag_reasons_list_every_cause():
+    r = report_with_confidence(["low", "low", "low"], ratios=[0, 50, 80])
+    assert r.needs_precise_review is True and len(r.flag_reasons) == 3     # spread, deviation, low confidence
+    assert any("최대-최소" in x for x in r.flag_reasons) and any("표준편차" in x for x in r.flag_reasons)
+
+
+def test_pipeline_adds_reasons_for_missing_reviewer_and_warnings(monkeypatch):
+    from app.agents.reviewer_scene import ReviewerSceneAgent
+
+    async def boom(self, context):
+        raise RuntimeError("fail")
+
+    monkeypatch.setattr(ReviewerSceneAgent, "run", boom)
+    r = asyncio.run(FaultAssessmentPipeline().run(AccidentInput(description="녹색 신호에 직진하는데 맞은편 차량이 좌회전하며 충돌했습니다")))
+    assert r.needs_precise_review is True and any("2건뿐" in x for x in r.flag_reasons)
