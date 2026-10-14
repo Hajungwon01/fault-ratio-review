@@ -58,6 +58,11 @@ class ProceedingAgent(BaseAgent):
             reasons.append(f"위원 간 과실비율 차이가 큼 (최대-최소 {spread}%p)")
         if deviation > DEVIATION_THRESHOLD:
             reasons.append(f"위원 간 과실비율 편차가 큼 (표준편차 {deviation})")
+        # 위원이 서로 다른 도표를 적용했다 = 정황으로 도표가 하나로 정해지지 않는 애매한 사고. 숫자가 우연히 일치해도 알린다.
+        # (저장된 실행 64건 중 불일치는 애매 사례 D09 3건뿐이고 명백한 사례에서는 0건이었다)
+        charts = sorted({r.chart_no for r in reviews if r.chart_no})
+        if len(charts) > 1:
+            reasons.append(f"위원이 서로 다른 도표를 적용함 ({', '.join(charts)})")
         low = [r.perspective for r in reviews if r.confidence == "low"]
         if len(low) >= LOW_CONFIDENCE_REVIEWERS:
             reasons.append(f"위원 {len(low)}명이 확신 낮음으로 답함 ({', '.join(low)})")

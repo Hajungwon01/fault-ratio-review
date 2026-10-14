@@ -204,3 +204,24 @@ def test_pipeline_adds_reasons_for_missing_reviewer_and_warnings(monkeypatch):
     monkeypatch.setattr(ReviewerSceneAgent, "run", boom)
     r = asyncio.run(FaultAssessmentPipeline().run(AccidentInput(description="녹색 신호에 직진하는데 맞은편 차량이 좌회전하며 충돌했습니다")))
     assert r.needs_precise_review is True and any("2건뿐" in x for x in r.flag_reasons)
+
+
+# ---------- 위원이 서로 다른 도표를 적용하면 숫자가 일치해도 정밀 심사 (애매한 사고 신호) ----------
+def report_with_charts(charts, ratios=(10, 10, 10)):
+    from app.agents.orchestrator import ProceedingAgent
+    from app.models.schemas import ReviewScore
+
+    reviews = [ReviewScore(reviewer_name=f"r{i}", perspective=f"p{i}", fault_ratio_a=a, fault_ratio_b=100 - a,
+                           rationale="r", chart_no=c, confidence="high") for i, (a, c) in enumerate(zip(ratios, charts))]
+    return asyncio.run(ProceedingAgent(LLMClient()).run({"reviews": reviews}))
+
+
+def test_different_charts_flag_even_when_numbers_agree():
+    r = report_with_charts(["차2-2", "차2-6", "차2-6"])             # 실제 D09: 숫자는 일치(10/10/10), 도표가 갈림
+    assert r.spread == 0 and r.needs_precise_review is True
+    assert r.flag_reasons == ["위원이 서로 다른 도표를 적용함 (차2-2, 차2-6)"]
+
+
+def test_same_chart_or_missing_chart_does_not_flag():
+    assert report_with_charts(["차43-2"] * 3).needs_precise_review is False
+    assert report_with_charts(["차43-2", "차43-2", ""]).needs_precise_review is False      # 도표 미적용 위원은 불일치로 보지 않는다
