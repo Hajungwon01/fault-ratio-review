@@ -91,6 +91,8 @@ CLARIFY_PROMPT = (
     "[질문이 필요한 경우]\n"
     f"- 정황에 없는 사실 하나에 따라 적용 도표가 달라지거나, 같은 도표 안에서도 정황 A 과실이 {CLARIFY_MIN_DIFF}%p 넘게 달라질 때만 만드세요.\n"
     "- 정황으로 이미 정해지거나, 사실에 따라 달라져도 차이가 작으면 만들지 마세요 (questions 는 빈 목록).\n"
+    "- 정황에 서술된 상황을 뒤집는 가능성(예: 일반 도로라고 읽히는데 합류 구간일 수도 있다)을 상상해 만들지 마세요. "
+    "위원들이 서로 다른 도표를 골랐거나, 근거에서 \"정황에 없어 불확실\"이라고 쓴 사실만 질문으로 만드세요.\n"
     "- 가장 영향이 큰 질문 1개만 만드세요. 위원들의 결론과 근거를 참고해 어떤 사실이 비워져 있는지 찾으세요.\n\n"
     "[질문 작성 규칙 — 사용자가 유리한 답을 고르지 못하게]\n"
     "- 관찰하거나 기억할 수 있는 사실을 묻습니다 (신호 색, 표지 유무, 진입 순서, 속도 구간 등). "
@@ -98,16 +100,31 @@ CLARIFY_PROMPT = (
     "- 보기(label)는 사실만 적고 과실비율·도표번호·\"유리/불리\" 같은 암시를 쓰지 마세요. 보기 길이와 어조를 비슷하게 하세요.\n"
     "- 보기는 서로 겹치지 않게 2~4개. \"모름\"은 시스템이 추가하므로 쓰지 마세요.\n"
     "- 보기마다 그 답이 맞을 때의 도표번호(chart_no)와 결과를 적습니다. 도표번호는 [인용 도표 상세]에 있는 것만 쓰세요.\n"
-    "- chart_a_is: 그 도표의 A차량이 정황의 A(나의 차량)이면 \"A\", 정황의 B(상대 차량)이면 \"B\". "
-    "scene_a_fault: 그 보기가 맞을 때 **정황의 A(나의 차량)** 입장의 최종 과실비율 (도표의 A 기준이 아니라 정황 기준).\n"
+    "- scene_a_fault: 그 보기가 맞을 때 **정황의 A(나의 차량)** 입장의 최종 과실비율 (도표의 A 기준이 아니라 정황 기준). "
+    "나의 차량이 도표의 A 인지 B 인지 먼저 대응시킨 뒤 계산하세요.\n"
     "- evidence: 그 사실을 확인할 수 있는 증거 (블랙박스, 신호 주기 기록, 경찰 조사 등)를 적습니다.\n"
     "- 주어진 [인용 도표 상세] 밖의 도표번호·비율을 만들어 쓰지 마세요."
 )
 
 
+def ambiguity_signals(reviews) -> list[str]:
+    """질문 생성이 필요할 수 있다는 신호: 위원이 서로 다른 도표를 고름 / 확신이 high 가 아닌 위원 / 위원 간 차이 / 평가 경고."""
+    signals = []
+    if len({r.chart_no for r in reviews if r.chart_no}) > 1:
+        signals.append("위원들이 서로 다른 도표를 적용함")
+    if any(r.confidence != "high" for r in reviews):
+        signals.append("확신이 high 가 아닌 위원이 있음")
+    faults = [r.fault_ratio_a for r in reviews]
+    if faults and max(faults) - min(faults) >= CLARIFY_MIN_DIFF:
+        signals.append("위원 간 과실비율 차이가 있음")
+    if any(r.warnings for r in reviews):
+        signals.append("위원 평가에 경고가 있음")
+    return signals
+
+
 def _format_review_summary(reviews) -> str:
     return "\n".join(
-        f"- {r.perspective}: 도표 {r.chart_no or '-'}, 도표 A=정황 {r.chart_a_is}, 정황 A 과실 {r.scene_a_fault}\n  근거: {r.rationale.strip()[:200]}"
+        f"- {r.perspective} (확신 {r.confidence}): 도표 {r.chart_no or '-'}, 정황 A 과실 {r.scene_a_fault}\n  근거: {r.rationale.strip()[:300]}"
         for r in reviews
     )
 
@@ -118,8 +135,12 @@ async def plan_clarification(llm, context: dict[str, Any]):
     질문이 필요 없으면 빈 목록. 보기가 도표 데이터와 어긋나면(없는 도표, 기본 비율과 크게 다른 값) 질문을 버리고 경고만 남긴다.
     보기별 결과 차이가 CLARIFY_MIN_DIFF 이하면 사용자에게 묻지 않고 참고 문구만 돌려준다.
     """
-    from app.core.verdict_check import check_scene_vs_chart
+    from app.core.verdict_check import check_scene_vs_chart_any_role
     from app.models.schemas import ClarificationPlan
+
+    # 위원들이 같은 도표·같은 값·높은 확신이면 정황이 충분히 정해진 사고로 보고 질문을 만들지 않는다 (명백한 사례에서 질문을 지어낸 오탐 방지)
+    if not ambiguity_signals(context["reviews"]):
+        return [], "", []
 
     user_prompt = (
         f"[사고 정황]\n{context['accident_input']}\n\n"
@@ -132,7 +153,7 @@ async def plan_clarification(llm, context: dict[str, Any]):
 
     q = plan.questions[0]
     warnings: list[str] = []
-    problems = [p for o in q.options for p in check_scene_vs_chart(o.chart_no.strip(), o.chart_a_is, o.scene_a_fault)]
+    problems = [p for o in q.options for p in check_scene_vs_chart_any_role(o.chart_no.strip(), o.scene_a_fault)]
     if problems:
         warnings.append(f"질문 단계: 보기의 도표·과실이 도표 데이터와 맞지 않아 질문을 생략했습니다 ({problems[0]})")
         return [], "", warnings

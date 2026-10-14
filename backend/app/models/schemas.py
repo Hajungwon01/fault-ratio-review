@@ -159,7 +159,6 @@ class QuestionOption(BaseModel):
 
     label: str = Field(..., description="사실만 적은 답 보기. 어느 쪽이 유리한지, 도표번호·과실비율을 암시하는 표현 금지")
     chart_no: str = Field(..., description="이 답이 맞을 때 적용되는 도표번호 (주어진 도표 안에서)")
-    chart_a_is: Literal["A", "B"] = Field(..., description="그 도표의 A차량이 정황의 A(나)이면 A, 정황의 B(상대)이면 B")
     scene_a_fault: int = Field(..., ge=0, le=100, description="이 답이 맞을 때 **정황의 A(나)** 입장의 과실비율")
 
 

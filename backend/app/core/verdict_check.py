@@ -35,6 +35,20 @@ def check_verdict(v: ReviewerVerdict, catalog: ChartCatalog | None = None) -> li
     return problems + check_scene_vs_chart(chart_no, v.chart_a_is, v.scene_a_fault, catalog)
 
 
+def check_scene_vs_chart_any_role(chart_no: str, scene_a_fault: int, catalog: ChartCatalog | None = None) -> list[str]:
+    """도표 A 가 정황의 A 일 때와 B 일 때 중 하나라도 기본 비율과 크게 어긋나지 않으면 통과.
+
+    질문 보기는 모델이 도표 역할 표시를 자주 거꾸로 적어(과실 값은 맞는데 표시만 틀림, 실측 2/2) 역할은 받지 않고 값만 본다.
+    """
+    a = check_scene_vs_chart(chart_no, "A", scene_a_fault, catalog)
+    b = check_scene_vs_chart(chart_no, "B", scene_a_fault, catalog)
+    if not a or not b:
+        return []
+    if "존재하지 않는" in a[0]:
+        return a
+    return [f"도표 {chart_no} 의 기본 과실(어느 쪽 역할로 봐도)과 보기의 정황 A 과실 {scene_a_fault} 가 {MAX_DEVIATION_FROM_BASE}%p 넘게 어긋남"]
+
+
 def check_scene_vs_chart(chart_no: str, chart_a_is: str, scene_a_fault: int, catalog: ChartCatalog | None = None) -> list[str]:
     """정황 A 기준 과실이 해당 도표의 기본 비율(chart_a_is 로 정황 기준으로 바꾼 값)과 크게 어긋나는지.
 

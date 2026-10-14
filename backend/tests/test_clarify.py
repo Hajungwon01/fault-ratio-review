@@ -13,17 +13,17 @@ from app.models.schemas import AccidentInput, ClarifyingQuestion, QuestionOption
 DESC = "녹색 신호에 직진하는데 맞은편 차량이 좌회전하며 충돌했습니다"
 
 
-def opt(label, chart, is_, fault):
-    return QuestionOption(label=label, chart_no=chart, chart_a_is=is_, scene_a_fault=fault)
+def opt(label, chart, fault):
+    return QuestionOption(label=label, chart_no=chart, scene_a_fault=fault)
 
 
 def question(options=None):
     return ClarifyingQuestion(
         question="상대 차량이 좌회전하기 직전, 상대 방향 신호는 무엇이었나요?",
         options=options or [
-            opt("녹색 직진 신호 또는 적색 신호였다", "차2-2", "A", 0),       # 도표 A = 직진 = 나
-            opt("좌회전 표지가 있는 곳에서 녹색 신호였다", "차2-6", "B", 10),  # 도표 B = 직진 = 나
-            opt("정지선 앞 점멸 신호였다", "차2-5", "A", 50),
+            opt("녹색 직진 신호 또는 적색 신호였다", "차2-2", 0),       # 도표 A = 직진 = 나
+            opt("좌회전 표지가 있는 곳에서 녹색 신호였다", "차2-6", 10),  # 도표 B = 직진 = 나
+            opt("정지선 앞 점멸 신호였다", "차2-5", 50),
         ],
         evidence="블랙박스 영상, 교차로 신호 주기 기록",
     )
@@ -94,14 +94,19 @@ def plan_for(q):
     return {"questions": [] if q is None else [q.model_dump()]}
 
 
-def ctx():
-    r = ReviewScore(reviewer_name="r", perspective="기준표 적용", fault_ratio_a=10, fault_ratio_b=90, rationale="r",
-                    chart_no="차2-6", chart_a_is="B", scene_a_fault=10)
-    return {"accident_input": "x", "reviews": [r], "cited_charts": "■ 차2-2 ■ 차2-6"}
+def review(chart="차2-6", fault=10, conf="high"):
+    return ReviewScore(reviewer_name="r", perspective="기준표 적용", fault_ratio_a=fault, fault_ratio_b=100 - fault, rationale="r",
+                       chart_no=chart, chart_a_is="B", scene_a_fault=fault, confidence=conf)
 
 
-def run_plan(q):
-    return asyncio.run(plan_clarification(PlanLLM(plan_for(q)), ctx()))
+def ctx(reviews=None):
+    # 기본: 위원들이 서로 다른 도표를 골라 질문 생성이 열리는 상황 (실제 D09)
+    reviews = reviews or [review("차2-6"), review("차2-2", 0), review("차2-6")]
+    return {"accident_input": "x", "reviews": reviews, "cited_charts": "■ 차2-2 ■ 차2-6"}
+
+
+def run_plan(q, reviews=None):
+    return asyncio.run(plan_clarification(PlanLLM(plan_for(q)), ctx(reviews)))
 
 
 def test_question_is_kept_when_outcomes_differ_a_lot():
@@ -110,7 +115,7 @@ def test_question_is_kept_when_outcomes_differ_a_lot():
 
 
 def test_small_difference_is_a_note_not_a_question():
-    q = question([opt("가", "차2-2", "A", 0), opt("나", "차2-6", "B", 10)])    # 실제 D09: 차이 10
+    q = question([opt("가", "차2-2", 0), opt("나", "차2-6", 10)])    # 실제 D09: 차이 10
     questions, note, warnings = run_plan(q)
     assert questions == [] and "차이는 작습니다" in note and "차2-2 적용 시 A 0" in note and "차2-6 적용 시 A 10" in note
     assert CLARIFY_MIN_DIFF == 10
@@ -121,15 +126,15 @@ def test_no_question_needed():
 
 
 def test_options_that_contradict_chart_data_are_dropped_with_warning():
-    bad = question([opt("가", "차2-2", "A", 100), opt("나", "차2-6", "B", 10)])   # 차2-2 에서 내가 도표 A(기본 0)인데 정황 A 100?
+    bad = question([opt("가", "차2-2", 50), opt("나", "차2-6", 10)])   # 차2-2 는 기본 0/100 — 어느 역할로 봐도 50 은 40%p 넘게 어긋남
     questions, note, warnings = run_plan(bad)
     assert questions == [] and warnings and "질문을 생략" in warnings[0]
-    nonexistent = question([opt("가", "차99-9", "A", 0), opt("나", "차2-6", "B", 60)])
+    nonexistent = question([opt("가", "차99-9", 0), opt("나", "차2-6", 60)])
     assert run_plan(nonexistent)[0] == [] and "존재하지 않는" in run_plan(nonexistent)[2][0]
 
 
 def test_duplicate_options_are_dropped():
-    dup = question([opt("같은 보기", "차2-2", "A", 0), opt("같은 보기", "차2-6", "B", 10)])
+    dup = question([opt("같은 보기", "차2-2", 0), opt("같은 보기", "차2-6", 10)])
     questions, _, warnings = run_plan(dup)
     assert questions == [] and "중복" in warnings[0]
 
@@ -168,3 +173,49 @@ def test_pipeline_report_carries_planned_question(monkeypatch):
     from app.evaluation.scenarios import format_clarification
 
     assert "차2-6" in format_clarification(r) and "A 10" in format_clarification(r)
+
+
+# ---------- 질문 생성 조건: 명백한 사례에서는 모델을 부르지 않는다 (D01 오탐 방지) ----------
+class CountingLLM(PlanLLM):
+    calls = 0
+
+    async def complete_json(self, *a, **k):
+        CountingLLM.calls += 1
+        return await super().complete_json(*a, **k)
+
+
+def test_no_planner_call_when_reviewers_agree_with_high_confidence():
+    CountingLLM.calls = 0
+    unanimous = [review("차43-2", 20), review("차43-2", 20), review("차43-2", 20)]
+    out = asyncio.run(plan_clarification(CountingLLM(plan_for(question())), ctx(unanimous)))
+    assert out == ([], "", []) and CountingLLM.calls == 0         # 질문 계획이 있어도 호출 자체를 건너뛴다
+
+
+@pytest.mark.parametrize("reviews,expected", [
+    ([review("차2-6"), review("차2-2"), review("차2-6")], "서로 다른 도표"),
+    ([review("차2-6"), review("차2-6"), review("차2-6", conf="medium")], "high 가 아닌"),
+    ([review("차2-6", 10), review("차2-6", 30), review("차2-6", 10)], "과실비율 차이"),
+])
+def test_ambiguity_signals(reviews, expected):
+    from app.agents.orchestrator import ambiguity_signals
+
+    assert any(expected in x for x in ambiguity_signals(reviews))
+
+
+def test_reviewer_warning_is_an_ambiguity_signal():
+    from app.agents.orchestrator import ambiguity_signals
+
+    w = review("차2-6")
+    w.warnings = ["평가 의심"]
+    assert any("경고" in x for x in ambiguity_signals([w, review("차2-6"), review("차2-6")]))
+    assert ambiguity_signals([review("차2-6")] * 3) == []
+
+
+# ---------- 보기 검증은 도표 역할 표시 없이 값만 본다 ----------
+def test_any_role_check_accepts_either_orientation():
+    from app.core.verdict_check import check_scene_vs_chart_any_role
+
+    assert check_scene_vs_chart_any_role("차2-2", 0) == [] and check_scene_vs_chart_any_role("차2-2", 100) == []   # 내가 도표 A / B
+    assert check_scene_vs_chart_any_role("차2-6", 10) == [] and check_scene_vs_chart_any_role("차2-6", 90) == []
+    assert check_scene_vs_chart_any_role("차2-2", 50)                                                              # 어느 쪽도 아님
+    assert "존재하지 않는" in check_scene_vs_chart_any_role("차99-9", 0)[0]
