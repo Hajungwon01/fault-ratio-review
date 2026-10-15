@@ -95,7 +95,7 @@ async def assess_for_user(accident_input: AccidentInput) -> AssessResponse:
 async def answer_for_user(session_id: str, body: AnswerRequest) -> AssessResponse:
     """질문에 대한 답변(보기 id, 모름은 -1/null)을 반영한 결과. 세션당 1회."""
     try:
-        return service.answer(session_id, body.option_id, body.seed)
+        return await service.answer(session_id, body.option_id, body.seed)
     except SessionNotFound:
         raise HTTPException(status_code=404, detail={"code": "session_not_found"})
     except AlreadyAnswered:

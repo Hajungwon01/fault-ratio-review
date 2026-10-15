@@ -47,6 +47,9 @@
   .pre { white-space: pre-wrap; }
   ul.plain { margin: 6px 0 0; padding-left: 20px; }
   .muted { color: var(--muted); font-size: 13px; }
+  .chart-item { border-top: 1px solid var(--line); padding: 10px 0; }
+  .chart-item:first-child { border-top: none; }
+  .chart-item strong { display: block; }
   .error { color: #b3261e; font-size: 14px; margin-top: 12px; }
   @media (prefers-color-scheme: dark) { .error { color: #ff8a80; } }
   .hidden { display: none !important; }
@@ -112,8 +115,8 @@
     <div class="card hidden" id="r-uncertain-card"><p class="notice" id="r-uncertain"></p></div>
     <div class="card">
       <h2>이렇게 판단한 이유</h2>
-      <div class="pre" id="r-explanation"></div>
-      <div id="r-charts-wrap" class="hidden"><p class="muted" style="margin-top:12px">적용된 기준표</p><ul class="plain" id="r-charts"></ul></div>
+      <div class="pre" id="r-summary"></div>
+      <div id="r-charts-wrap" class="hidden"><p class="muted" style="margin-top:12px">적용된 기준표</p><div id="r-charts"></div></div>
     </div>
     <div class="card hidden" id="r-evidence-card"><h2>판단을 바꿀 수 있는 증거</h2><ul class="plain" id="r-evidence"></ul></div>
     <div class="card hidden" id="r-other-card"><h2>참고</h2><div class="pre" id="r-other-text"></div></div>
@@ -197,6 +200,29 @@ function renderQuestion(data) {
   show("question");
 }
 
+function renderChartBasis(items) {
+  // 도표 근거는 서버가 도표 데이터에서 만든 값 — 줄마다 textContent 로만 넣는다
+  const box = $("r-charts");
+  box.replaceChildren(...items.map((c) => {
+    const div = document.createElement("div");
+    div.className = "chart-item";
+    const rows = [
+      [c.chart_no + " " + c.label, "strong"],
+      ["도표가 다루는 상황: " + c.situation, "muted"],
+      ["기본 과실비율: 나 " + c.my_base + " : 상대 " + c.other_base, "muted"],
+    ];
+    if (c.laws && c.laws.length) rows.push(["관련 법규: " + c.laws.join(" / "), "muted"]);
+    rows.forEach(([text, kind]) => {
+      const p = document.createElement(kind === "strong" ? "strong" : "div");
+      if (kind === "muted") p.className = "muted";
+      p.textContent = text;
+      div.append(p);
+    });
+    return div;
+  }));
+  $("r-charts-wrap").classList.toggle("hidden", items.length === 0);
+}
+
 function renderResult(r) {
   const same = r.my_fault_low === r.my_fault_high;
   const main = document.createElement("span");
@@ -214,9 +240,8 @@ function renderResult(r) {
   $("r-uncertain").textContent = "검토 의견이 갈린 사고입니다. 결과를 그대로 믿기보다 보험사 설명이나 전문가 상담으로 확인해 보시기를 권합니다.";
   $("r-uncertain-card").classList.toggle("hidden", !r.uncertain);
 
-  $("r-explanation").textContent = r.explanation;
-  fillList($("r-charts"), r.charts, (c) => c.chart_no + " " + c.label);
-  $("r-charts-wrap").classList.toggle("hidden", r.charts.length === 0);
+  $("r-summary").textContent = r.summary;
+  renderChartBasis(r.chart_basis || []);
 
   fillList($("r-evidence"), r.evidence_to_check, (e) => e);
   $("r-evidence-card").classList.toggle("hidden", r.evidence_to_check.length === 0);

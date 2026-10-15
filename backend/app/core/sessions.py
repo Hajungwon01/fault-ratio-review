@@ -35,6 +35,7 @@ class Session:
     seed: int
     expires_at: float
     answered: bool = False
+    accident_text: str = ""  # 답변 시점의 설명 생성에 쓴다
 
 
 class SessionStore:
@@ -50,12 +51,12 @@ class SessionStore:
         for sid in [k for k, s in self._sessions.items() if s.expires_at <= now]:
             del self._sessions[sid]
 
-    def create(self, report: FaultReport, question: ClarifyingQuestion, seed: int) -> str:
+    def create(self, report: FaultReport, question: ClarifyingQuestion, seed: int, accident_text: str = "") -> str:
         self._purge_expired()
         if len(self._sessions) >= self.max_sessions:
             raise TooManySessions()
         sid = secrets.token_urlsafe(24)  # 추측할 수 없는 무작위 토큰
-        self._sessions[sid] = Session(report, question, seed, self._clock() + self.ttl_sec)
+        self._sessions[sid] = Session(report, question, seed, self._clock() + self.ttl_sec, accident_text=accident_text)
         return sid
 
     def get(self, session_id: str) -> Session:
@@ -73,6 +74,7 @@ class SessionStore:
         s = self._sessions[session_id]
         s.answered = True
         s.report = None  # type: ignore[assignment]  # 내부 결과는 더 보관하지 않는다
+        s.accident_text = ""
 
     def __len__(self) -> int:
         self._purge_expired()

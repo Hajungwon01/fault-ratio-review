@@ -86,9 +86,10 @@ def test_without_question_result_is_returned_with_range_and_disclaimer(client):
     assert (res["my_fault_low"], res["my_fault_high"]) == (0, 10) and (res["other_fault_low"], res["other_fault_high"]) == (90, 100)
     assert res["assumption"] == "" and res["evidence_to_check"] == []
     assert res["other_possibilities"].startswith("다른 도표도") and "참고용" in res["disclaimer"] and "법적 효력" in res["disclaimer"]
-    assert res["charts"] and res["charts"][0]["chart_no"] == "차2-2"
-    assert set(body["result"]) == {"my_fault_low", "my_fault_high", "other_fault_low", "other_fault_high", "assumption", "explanation",
-                                   "charts", "evidence_to_check", "other_possibilities", "uncertain", "disclaimer"}
+    assert res["chart_basis"] and res["chart_basis"][0]["chart_no"] == "차2-2"
+    assert res["summary"].startswith("이 사고는") and "차2-2" in res["summary"]      # 모델 설명이 없으면 코드가 만든 문장
+    assert set(body["result"]) == {"my_fault_low", "my_fault_high", "other_fault_low", "other_fault_high", "assumption", "summary",
+                                   "chart_basis", "evidence_to_check", "other_possibilities", "uncertain", "disclaimer"}
     assert "flag_reasons" not in json.dumps(body) and "reviews" not in body["result"]
 
 
@@ -108,7 +109,8 @@ def test_answer_uses_selected_option_and_marks_it_as_a_statement(client, label, 
     assert (res["my_fault_low"], res["my_fault_high"]) == (expected, expected)
     assert "사용자 진술 기준" in res["assumption"] and label in res["assumption"]
     assert res["evidence_to_check"] == ["블랙박스 영상, 신호 주기 기록"]                    # 증거 안내는 답변 뒤에 공개
-    assert [c["chart_no"] for c in res["charts"]] == [chart]
+    assert [c["chart_no"] for c in res["chart_basis"]] == [chart]
+    assert res["summary"].startswith("고르신 답변을 기준으로")                         # mock 이라 코드가 만든 문장
 
 
 @pytest.mark.parametrize("option_id", [-1, None])
@@ -221,3 +223,84 @@ def test_too_many_sessions_is_503(client, monkeypatch):
     assert start(client).status_code == 200
     r = start(client)
     assert r.status_code == 503 and r.json()["detail"]["code"] == "busy"
+
+
+# ---------- 설명(summary / chart_basis): 모름은 비공개, 답변함은 모델 설명을 검증해서 사용 ----------
+from app.core.llm_client import LLMClient  # noqa: E402
+
+
+class AnswerLLM(LLMClient):
+    """답변 시점의 설명 생성만 흉내 낸다 (실제 호출 없음)."""
+
+    def __init__(self, reply="", fail=False, mock=False):
+        super().__init__()
+        self.reply, self.fail, self._m, self.calls = reply, fail, mock, []
+
+    @property
+    def mock_mode(self):
+        return self._m
+
+    async def complete(self, system_prompt, user_prompt):
+        self.calls.append((system_prompt, user_prompt))
+        if self.fail:
+            raise RuntimeError("boom")
+        return self.reply
+
+
+GOOD_SUMMARY = "고르신 답변을 기준으로 차2-6을 적용했습니다. 이 도표는 비보호 좌회전 표지가 있는 교차로의 사고를 다루며, 나의 과실은 10%로 보았습니다."
+
+
+def with_llm(client, monkeypatch, **kw):
+    llm = AnswerLLM(**kw)
+    monkeypatch.setattr(main.pipeline, "llm", llm)
+    return llm
+
+
+def test_unknown_answer_hides_chart_basis_and_model_is_not_called(client, monkeypatch):
+    llm = with_llm(client, monkeypatch, reply=GOOD_SUMMARY)
+    body = start(client).json()
+    res = client.post(f"/v1/assess/{body['session_id']}/answer", json={"option_id": -1, "seed": body["question"]["seed"]}).json()["result"]
+    assert res["chart_basis"] == [] and "정황에 없는 사실에 따라" in res["summary"]
+    assert llm.calls == [] and "차2" not in json.dumps(res, ensure_ascii=False)          # 보기별 도표·결과 비공개
+
+
+def test_answered_summary_uses_valid_model_text(client, monkeypatch):
+    llm = with_llm(client, monkeypatch, reply=GOOD_SUMMARY)
+    body = start(client).json()
+    res = answer(client, body, "녹색 신호였다").json()["result"]
+    assert res["summary"] == GOOD_SUMMARY and [c["chart_no"] for c in res["chart_basis"]] == ["차2-6"]
+    assert res["chart_basis"][0]["my_base"] == 10 and res["chart_basis"][0]["other_base"] == 90
+    system, user = llm.calls[0]
+    assert "녹색 신호였다" in user and "사용자 진술 기준" in user and "차2-6" in user and "도로교통법" in user
+    # 다른 보기의 내용·도표는 모델 프롬프트에도 넣지 않는다
+    for other in ("적색 신호였다", "점멸 신호였다", "차2-2", "차2-5"):
+        assert other not in user
+
+
+@pytest.mark.parametrize("reply,fail", [
+    ("위원 3명이 일치했습니다. 나의 과실은 10%입니다.", False),          # 내부 용어
+    ("차2-2를 적용했습니다. 나의 과실은 10%입니다.", False),             # 허용되지 않은 도표
+    ("나의 과실은 35%입니다.", False),                                   # 주어지지 않은 숫자
+    ("", True),                                                           # 호출 실패
+])
+def test_invalid_or_failed_model_summary_falls_back_to_code_text(client, monkeypatch, reply, fail):
+    with_llm(client, monkeypatch, reply=reply, fail=fail)
+    body = start(client).json()
+    res = answer(client, body, "녹색 신호였다").json()["result"]
+    assert res["summary"].startswith("고르신 답변을 기준으로 차2-6(") and "나 10 : 상대 90" in res["summary"]
+
+
+def test_mock_mode_skips_the_model_call(client, monkeypatch):
+    llm = with_llm(client, monkeypatch, reply=GOOD_SUMMARY, mock=True)
+    body = start(client).json()
+    res = answer(client, body, "녹색 신호였다").json()["result"]
+    assert llm.calls == [] and res["summary"].startswith("고르신 답변을 기준으로")
+
+
+def test_without_question_uses_pipeline_user_summary_when_valid(client):
+    rep = report(with_question=False, faults=(0, 0, 0))
+    rep.user_summary = "이 사고는 차2-2에 해당하며 나의 과실은 0%로 보았습니다."
+    client.holder["report"] = rep
+    assert start(client).json()["result"]["summary"] == rep.user_summary
+    rep.user_summary = "위원들이 일치했습니다."
+    assert start(client).json()["result"]["summary"].startswith("이 사고는 '")        # 검증 실패 → 코드 문장
