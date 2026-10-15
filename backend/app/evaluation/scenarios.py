@@ -155,13 +155,15 @@ def _reviewer_texts(report: FaultReport) -> list[str]:
 
 def check_user_summary(report) -> list[str]:
     """파이프라인이 만든 사용자용 설명이 사용자 API 의 검증을 통과하는지 (없으면 빈 목록이 아니라 '없음' 한 항목)."""
-    from app.core.user_flow import basis_for
+    from app.core.user_summary import basis_for, reviewers_range
     from app.core.user_text import validate_user_summary
 
+    if report.needs_clarification:
+        return ["질문 단계라 설명은 답변 뒤에 생성"]
     if not report.user_summary:
         return ["설명 없음"]
-    faults = [r.fault_ratio_a for r in report.reviews] or [report.fault_ratio_a]
-    return validate_user_summary(report.user_summary, basis_for(report, None), min(faults), max(faults))
+    low, high = reviewers_range(report)
+    return validate_user_summary(report.user_summary, basis_for(report, None), low, high)
 
 
 def format_clarification(report) -> str:

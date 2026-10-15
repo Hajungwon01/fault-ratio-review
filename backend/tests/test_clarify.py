@@ -383,3 +383,19 @@ def test_pipeline_report_and_scenario_result_carry_the_trace_and_summary_check()
     assert res.clarification_trace == r.clarification_trace and res.basis == r.basis
     assert res.summary_problems == ["설명 없음"] == check_user_summary(r)        # mock 은 사용자용 설명이 비어 있다
     assert set(res.reviewer_assumed) == {v.perspective for v in r.reviews}
+
+
+# ---------- 질문 계획: 영향이 가장 큰 사실을 고르게 하고, 참고 문구는 같은 도표를 묶는다 ----------
+def test_planner_prompt_asks_for_the_highest_impact_fact():
+    from app.agents.orchestrator import CLARIFY_PROMPT
+
+    for must in ("가장 크게 바뀌는 사실 하나", "사소한 경우 차이", "신호·표지의 유무와 신호 상태"):
+        assert must in CLARIFY_PROMPT
+
+
+def test_note_groups_options_of_the_same_chart():
+    # 실측 D14: 같은 도표의 두 경우(A 40 / A 50)가 "차12-1 적용 시 A 40, 차12-1 적용 시 A 50" 으로 중복 표시됐다
+    q = question([opt("가", "차2-6", 10), opt("나", "차2-6", 20)])
+    questions, note, _ = run_plan(q)
+    assert questions == [] and "차2-6 적용 시 A 10~20" in note and note.count("차2-6") == 1
+    assert "경우에 따라 비율이 조금 달라질 수 있으나" in note and "적용 도표가 달라질 수 있으나" not in note

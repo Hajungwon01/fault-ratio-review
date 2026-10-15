@@ -181,22 +181,13 @@ class ClarificationPlan(BaseModel):
     questions: list[ClarifyingQuestion] = Field(default_factory=list, max_length=1)
 
 
-class BasisSummaries(BaseModel):
-    """진행 에이전트가 한 번의 호출로 돌려주는 두 문단: 내부 근거 요약과 사용자용 설명."""
-
-    basis_summary: str = Field(..., description="내부용 근거 요약. 위원 의견이 일치하거나 갈리는 점, 가정한 사실 포함")
-    user_summary: str = Field(
-        ..., description="사고 당사자가 읽는 3~5문장 설명. 내 차량/상대 차량으로 쓰고 위원·정황 A·확신·가정 같은 내부 용어 금지"
-    )
-
-
 class FaultReport(BaseModel):
     """진행 에이전트가 생성하는 최종 "몇 대 몇" 심사 리포트."""
 
     fault_ratio_a: int = Field(..., ge=0, le=100)
     fault_ratio_b: int = Field(..., ge=0, le=100)
     basis: str
-    user_summary: str = Field("", description="사용자용 설명(모델 작성, 검증 전). 비어 있으면 코드 문장을 쓴다")
+    user_summary: str = Field("", description="사용자용 설명(별도 호출로 작성, 검증 전). 질문이 필요 없을 때만 파이프라인이 채우고, 비어 있으면 코드 문장을 쓴다")
     deviation: float = Field(..., description="검토위원 간 과실비율 편차(표준편차 등)")
     spread: int = Field(0, description="검토위원 A과실비율의 최대-최소 차이(%p). 표준편차가 이상치 한 명을 놓치는 것을 보완")
     flag_reasons: list[str] = Field(default_factory=list, description="정밀 심사 플래그가 켜진 이유 (꺼져 있으면 빈 목록)")

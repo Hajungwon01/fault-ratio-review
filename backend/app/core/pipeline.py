@@ -25,6 +25,7 @@ from app.core.reviewer_context import (
     format_precedents,
 )
 from app.core.scope_check import OutOfScopeError, check_scope
+from app.core.user_summary import basis_for, reviewers_range, unconfirmed_facts, write_user_summary
 from app.models.schemas import AccidentInput, FaultReport
 
 logger = logging.getLogger(__name__)
@@ -141,5 +142,11 @@ class FaultAssessmentPipeline:
         except Exception as e:  # noqa: BLE001 - 보조 단계라 실패해도 본 결과를 막지 않는다
             logger.warning("질문 생성 실패: %s", e)
             warnings.append(f"질문 단계를 건너뛰었습니다 ({type(e).__name__}).")
+        # 사용자용 설명은 내부 정보(위원·사실검증)를 주지 않는 별도 호출로 쓴다. 질문이 필요하면 답변 뒤에 쓰므로 여기서는 건너뛴다.
+        if not report.needs_clarification:
+            low, high = reviewers_range(report)
+            report.user_summary = await write_user_summary(
+                self.llm, accident_text, basis_for(report, None), low, high, unconfirmed=unconfirmed_facts(report)
+            )
         report.warnings = warnings
         return report

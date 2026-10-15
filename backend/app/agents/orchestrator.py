@@ -14,7 +14,7 @@ import statistics
 from typing import Any
 
 from app.agents.base import BaseAgent, format_fact_check
-from app.models.schemas import BasisSummaries, FaultReport
+from app.models.schemas import FaultReport
 
 # "정밀 심사 필요" 판정 기준 — 둘 중 하나라도 넘으면 플래그. 둘 다 평가셋 실측 후 조정할 초기값이다 (#13).
 #
@@ -72,12 +72,7 @@ class ProceedingAgent(BaseAgent):
             "- 위원들의 의견이 일치하는 점과 갈리는 점(비율·도표)을 구분해 씁니다.\n"
             "- 결론이 의존하는 '가정한 사실'이 있으면 반드시 언급하고, 사실검증이 지적한 인용 오류가 있으면 짚습니다.\n"
             "- 주어진 값 밖의 도표번호·비율·판례·법조항을 만들어 쓰지 마세요. 숫자는 주어진 것만 그대로 쓰세요.\n"
-            "- 나의 차량=A, 상대 차량=B 기준으로 쓰세요.\n\n"
-            "[출력] 두 문단을 JSON 으로 답합니다.\n"
-            "- basis_summary: 위 규칙을 따르는 내부용 요약.\n"
-            "- user_summary: 사고 당사자가 읽는 3~5문장. '내 차량'·'상대 차량'으로 쓰고 '위원', '정황 A', '확신', '가정', '플래그' 같은 내부 용어를 쓰지 마세요. "
-            "숫자는 [최종 결론]의 값(나의 과실)만 쓰고, 정확히 정해지지 않은 점은 '정황에 없는 사실에 따라 달라질 수 있다'고 표현하세요. "
-            "도표번호를 쓸 때는 [검토위원 결론]에 나온 것만 쓰세요."
+            "- 나의 차량=A, 상대 차량=B 기준으로 쓰세요."
         )
 
     async def run(self, context: dict[str, Any]) -> FaultReport:
@@ -92,16 +87,12 @@ class ProceedingAgent(BaseAgent):
 
         # 숫자 부분은 코드가 만들고, 요약 문단만 모델에게 맡긴다 (요약 생성이 실패해도 심사 결과는 유지한다)
         header = basis_header(reviews, avg_a, avg_b)
-        user_summary = ""
         try:
-            summaries = await self.llm.complete_json(
+            narrative = await self.llm.complete(
                 self.system_prompt,
                 _basis_user_prompt(reviews, avg_a, avg_b, deviation, context.get("fact_check")),
-                BasisSummaries,
-                mock={"basis_summary": "[MOCK 진행 에이전트] 실제 LLM 이 연결되지 않아 요약을 만들지 않았습니다.", "user_summary": ""},
             )
-            basis = f"{header}\n\n{summaries.basis_summary.strip()}"
-            user_summary = summaries.user_summary.strip()
+            basis = f"{header}\n\n{narrative.strip()}"
         except Exception as e:  # noqa: BLE001 - 요약은 보조 산출물
             logger.warning("근거 요약 생성 실패: %s", e)
             basis = header
@@ -124,7 +115,6 @@ class ProceedingAgent(BaseAgent):
             fault_ratio_a=avg_a,
             fault_ratio_b=avg_b,
             basis=basis,
-            user_summary=user_summary,
             deviation=deviation,
             spread=spread,
             flag_reasons=reasons,
@@ -147,7 +137,9 @@ CLARIFY_PROMPT = (
     "- 정황으로 이미 정해지거나, 사실에 따라 달라져도 차이가 작으면 만들지 마세요 (questions 는 빈 목록).\n"
     "- 정황에 서술된 상황을 뒤집는 가능성(예: 일반 도로라고 읽히는데 합류 구간일 수도 있다)을 상상해 만들지 마세요. "
     "위원들이 서로 다른 도표를 골랐거나, 근거에서 \"정황에 없어 불확실\"이라고 쓴 사실만 질문으로 만드세요.\n"
-    "- 가장 영향이 큰 질문 1개만 만드세요. 위원들의 결론과 근거를 참고해 어떤 사실이 비워져 있는지 찾으세요.\n\n"
+    "- 가장 영향이 큰 질문 1개만 만드세요. 위원들의 결론과 근거를 참고해 어떤 사실이 비워져 있는지 찾으세요.\n"
+    "- 가정한 사실이 여러 개면, 그 사실이 달라질 때 **적용 도표 또는 과실비율이 가장 크게 바뀌는 사실 하나**를 고르세요. "
+    "같은 도표 안의 사소한 경우 차이(예: 어느 쪽이 우측 도로인지)보다 신호·표지의 유무와 신호 상태처럼 도표 자체를 바꾸는 사실을 우선하세요.\n\n"
     "[질문 작성 규칙 — 사용자가 유리한 답을 고르지 못하게]\n"
     "- 관찰하거나 기억할 수 있는 사실을 묻습니다 (신호 색, 표지 유무, 진입 순서, 속도 구간 등). "
     "\"신호위반이었나요?\"처럼 법적 결론을 묻거나 용어로 결과를 암시하지 마세요.\n"
@@ -273,7 +265,13 @@ async def plan_clarification(llm, context: dict[str, Any]):
     faults = [o.scene_a_fault for o in q.options]
     if max(faults) - min(faults) <= CLARIFY_MIN_DIFF:
         log(f"참고 문구로 대체: 보기별 결과 차이 {max(faults) - min(faults)}%p")
-        detail = ", ".join(f"{o.chart_no} 적용 시 A {o.scene_a_fault}" for o in q.options)
-        return [], f"정황에 없는 사실에 따라 적용 도표가 달라질 수 있으나 결과 차이는 작습니다 ({detail})", warnings
+        by_chart: dict[str, list[int]] = {}
+        for o in q.options:
+            by_chart.setdefault(o.chart_no, []).append(o.scene_a_fault)
+        detail = ", ".join(
+            f"{no} 적용 시 A {min(v)}" + (f"~{max(v)}" if max(v) != min(v) else "") for no, v in by_chart.items()
+        )
+        lead = "적용 도표가 달라질 수 있으나" if len(by_chart) > 1 else "경우에 따라 비율이 조금 달라질 수 있으나"
+        return [], f"정황에 없는 사실에 따라 {lead} 결과 차이는 작습니다 ({detail})", warnings
     log(f"질문 채택: 보기별 결과 차이 {max(faults) - min(faults)}%p")
     return [q], "", warnings

@@ -18,19 +18,19 @@ REVIEWS = [review("기준표 적용", 10, assumed=["상대 방향 신호가 녹�
 
 
 class Spy(LLMClient):
-    def __init__(self, reply="요약 문단입니다.", fail=False, user_reply=""):
+    def __init__(self, reply="요약 문단입니다.", fail=False):
         super().__init__()
-        self.reply, self.fail, self.user_reply, self.calls = reply, fail, user_reply, []
+        self.reply, self.fail, self.calls = reply, fail, []
 
     @property
     def mock_mode(self):
         return False
 
-    async def complete_json(self, system_prompt, user_prompt, model_cls, *, mock, max_attempts=3):
+    async def complete(self, system_prompt, user_prompt):
         self.calls.append((system_prompt, user_prompt))
         if self.fail:
             raise RuntimeError("boom")
-        return model_cls.model_validate({"basis_summary": self.reply, "user_summary": self.user_reply})
+        return self.reply
 
 
 def run(llm, reviews=REVIEWS, fact_check=None):
@@ -85,16 +85,10 @@ def test_two_reviewers_header_and_mock_pipeline():
     assert r.basis.startswith("최종(위원 중앙값): 나(A) 50 : 상대(B) 50") and "[MOCK" in r.basis
 
 
-# ---------- 사용자용 설명(user_summary)도 같은 호출에서 ----------
-def test_user_summary_comes_from_the_same_call_and_prompt_asks_for_plain_words():
-    llm = Spy(user_reply="  내 차량의 과실은 10~20% 정도로 보았습니다.  ")
+# ---------- 사용자용 설명은 진행 에이전트가 만들지 않는다 (별도 호출, core/user_summary.py) ----------
+def test_proceeding_agent_makes_only_the_internal_basis_in_one_call():
+    llm = Spy(reply="내부 요약")
     r = run(llm)
-    assert len(llm.calls) == 1 and r.user_summary == "내 차량의 과실은 10~20% 정도로 보았습니다."   # 추가 호출 없음
+    assert len(llm.calls) == 1 and r.user_summary == ""                    # 사용자용 설명은 여기서 만들지 않는다
     system = llm.calls[0][0]
-    for must in ("basis_summary", "user_summary", "3~5문장", "내부 용어", "내 차량"):
-        assert must in system
-
-
-def test_user_summary_is_empty_when_the_call_fails():
-    r = run(Spy(fail=True))
-    assert r.user_summary == "" and r.basis.startswith("최종(위원 중앙값)")
+    assert "user_summary" not in system and "JSON" not in system          # 두 문단을 한 호출로 받지 않는다
