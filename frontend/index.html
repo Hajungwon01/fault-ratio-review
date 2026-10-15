@@ -3,115 +3,268 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>과실비율 산정 심사 (개발용 뼈대)</title>
+<title>교통사고 과실비율 확인</title>
 <style>
-  :root { color-scheme: light; }
-  body { font-family: -apple-system, "맑은 고딕", sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #1f1f1f; }
-  h1 { font-size: 20px; }
-  label { display: block; margin-top: 14px; font-weight: 600; font-size: 14px; }
-  input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 14px; }
-  textarea { min-height: 90px; }
-  button { margin-top: 20px; padding: 10px 18px; background: #1f4e78; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-  button:disabled { opacity: 0.6; cursor: default; }
-  pre { white-space: pre-wrap; background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 13px; margin-top: 20px; }
-  .status { margin-top: 10px; font-size: 13px; color: #666; }
-  .hint { margin: 6px 0 0; font-size: 12px; color: #666; }
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5d6677; --line: #dfe3ea;
+    --accent: #1f4e78; --accent-text: #fff; --soft: #eaf1f8; --warn-bg: #fff6e0; --warn-line: #e6c36b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171c; --card: #1c2027; --text: #e8ebf0; --muted: #98a1b0; --line: #333a46;
+            --accent: #6aa6dc; --accent-text: #0e141b; --soft: #202a36; --warn-bg: #3a3220; --warn-line: #8a7335; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: -apple-system, "Segoe UI", "맑은 고딕", sans-serif; line-height: 1.6; }
+  main { max-width: 680px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+  label.field { display: block; font-weight: 600; font-size: 14px; margin-top: 14px; }
+  textarea, input, select { width: 100%; padding: 10px; margin-top: 6px; font: inherit; color: inherit;
+                            background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  textarea { min-height: 120px; resize: vertical; }
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+  button { font: inherit; padding: 10px 18px; border-radius: 6px; border: 1px solid var(--accent); cursor: pointer;
+           background: var(--accent); color: var(--accent-text); margin-top: 18px; }
+  button.secondary { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  .options { margin: 8px 0 0; padding: 0; list-style: none; }
+  .options label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-top: 8px;
+                   border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+  .options input { width: auto; margin: 4px 0 0; }
+  .options label:has(input:checked) { border-color: var(--accent); background: var(--soft); }
+  .range { font-size: 28px; font-weight: 700; margin: 4px 0; }
+  .range small { font-size: 14px; font-weight: 400; color: var(--muted); }
+  .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--line); margin: 8px 0 4px; }
+  .bar > span { display: block; }
+  .bar .me { background: var(--accent); }
+  .bar .range-me { background: var(--accent); opacity: .45; }
+  .notice { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+  .pre { white-space: pre-wrap; }
+  ul.plain { margin: 6px 0 0; padding-left: 20px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .error { color: #b3261e; font-size: 14px; margin-top: 12px; }
+  @media (prefers-color-scheme: dark) { .error { color: #ff8a80; } }
+  .hidden { display: none !important; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent);
+             border-radius: 50%; animation: spin 1s linear infinite; vertical-align: -2px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
-  <h1>과실비율 산정 심사 — 개발용 입력 폼 (1주차 뼈대)</h1>
-  <p class="status">백엔드가 http://localhost:8000 에서 실행 중이어야 합니다.</p>
+<main>
+  <h1>교통사고 과실비율 확인</h1>
+  <p class="sub">사고 상황을 적으면 손해보험협회 과실비율 인정기준을 근거로 <b>대략의 과실 범위와 이유</b>를 설명해 드립니다. 참고용이며 법적 효력은 없습니다.</p>
 
-  <form id="accident-form">
-    <label for="description">사고 상황 설명 (필수)</label>
-    <textarea id="description" required minlength="10" maxlength="2000"
-      placeholder="나의 차량은 A, 상대 차량은 B로 적어주세요. 예) 제가(A) 1차선에서 정상 직진 중이었는데, 옆 차선의 상대 차량(B)이 방향지시등 없이 갑자기 제 앞으로 차선을 변경하면서 충돌했어요"></textarea>
-    <p class="hint">현재는 <b>자동차 대 자동차</b>(이륜차 포함) 사고만 심사합니다. 보행자·자전거·킥보드 사고는 지원하지 않습니다.</p>
+  <!-- 1. 입력 -->
+  <section id="view-input" class="card">
+    <h2>사고 상황</h2>
+    <form id="accident-form">
+      <label class="field" for="description">사고 상황 설명 (필수)</label>
+      <textarea id="description" required minlength="10" maxlength="2000"
+        placeholder="나의 차량은 A, 상대 차량은 B로 적어 주세요. 예) 제가(A) 1차로에서 직진 중인데 옆 차로의 상대 차량(B)이 갑자기 제 앞으로 차로를 변경하면서 충돌했어요"></textarea>
+      <p class="hint">자동차 대 자동차(이륜차 포함) 사고만 확인할 수 있습니다. 보행자·자전거·킥보드 사고는 지원하지 않습니다.</p>
 
-    <label for="accident_type">사고 유형 (선택 — 검색 힌트로만 사용)</label>
-    <select id="accident_type">
-      <option value="">선택 안 함</option>
-      <option value="straight_vs_left_turn">직진 vs 좌회전</option>
-      <option value="lane_change">차선변경</option>
-      <option value="rear_end_collision">후행 추돌</option>
-      <option value="signal_violation">신호위반 관련</option>
-      <option value="other">기타</option>
-    </select>
+      <details>
+        <summary>알고 있는 정보를 더 적기 (선택)</summary>
+        <label class="field" for="lane_info">차로 상태</label>
+        <input id="lane_info" type="text" maxlength="200" placeholder="예: 2차로 중 1차로 주행 중 변경" />
+        <label class="field" for="speed_a">내 차량 속도 (km/h)</label>
+        <input id="speed_a" type="number" min="0" max="300" />
+        <label class="field" for="speed_b">상대 차량 속도 (km/h)</label>
+        <input id="speed_b" type="number" min="0" max="300" />
+        <p class="hint">모르는 항목은 비워 두세요. 추측해서 적으면 결과가 틀어질 수 있습니다.</p>
+      </details>
 
-    <label for="signal_state">신호 상태</label>
-    <select id="signal_state">
-      <option value="unknown">알 수 없음</option>
-      <option value="a_green_b_green">A 녹색 / B 녹색</option>
-      <option value="a_green_b_red">A 녹색 / B 적색</option>
-      <option value="a_red_b_green">A 적색 / B 녹색</option>
-      <option value="a_red_b_red">A 적색 / B 적색</option>
-    </select>
+      <button type="submit" id="submit-btn">확인하기</button>
+    </form>
+  </section>
 
-    <label for="lane_info">차선 상태</label>
-    <input id="lane_info" type="text" placeholder="예: 2차로 중 1차로 주행 중 변경" />
+  <!-- 2. 대기 -->
+  <section id="view-wait" class="card hidden">
+    <p><span class="spinner"></span><span id="wait-text">분석 중입니다.</span></p>
+    <p class="muted">여러 관점으로 검토하느라 1~2분 정도 걸릴 수 있습니다. 창을 닫지 마세요. (<span id="elapsed">0</span>초 경과)</p>
+  </section>
 
-    <label for="speed_a">A차량 속도 (km/h)</label>
-    <input id="speed_a" type="number" />
+  <!-- 3. 질문 -->
+  <section id="view-question" class="card hidden">
+    <h2 id="q-text"></h2>
+    <p class="notice" id="q-notice"></p>
+    <form id="answer-form">
+      <ul class="options" id="q-options"></ul>
+      <button type="submit" id="answer-btn" disabled>답변하고 결과 보기</button>
+    </form>
+  </section>
 
-    <label for="speed_b">B차량 속도 (km/h)</label>
-    <input id="speed_b" type="number" />
+  <!-- 4. 결과 -->
+  <section id="view-result" class="hidden">
+    <div class="card">
+      <h2>나의 과실</h2>
+      <div class="range" id="r-mine"></div>
+      <div class="bar" aria-hidden="true"><span class="me" id="bar-me"></span><span class="range-me" id="bar-range"></span></div>
+      <div class="muted" id="r-other"></div>
+      <p class="notice hidden" id="r-assumption"></p>
+    </div>
+    <div class="card hidden" id="r-uncertain-card"><p class="notice" id="r-uncertain"></p></div>
+    <div class="card">
+      <h2>이렇게 판단한 이유</h2>
+      <div class="pre" id="r-explanation"></div>
+      <div id="r-charts-wrap" class="hidden"><p class="muted" style="margin-top:12px">적용된 기준표</p><ul class="plain" id="r-charts"></ul></div>
+    </div>
+    <div class="card hidden" id="r-evidence-card"><h2>판단을 바꿀 수 있는 증거</h2><ul class="plain" id="r-evidence"></ul></div>
+    <div class="card hidden" id="r-other-card"><h2>참고</h2><div class="pre" id="r-other-text"></div></div>
+    <p class="muted" id="r-disclaimer"></p>
+    <button type="button" class="secondary" id="restart-btn">처음부터 다시</button>
+  </section>
 
-    <button type="submit" id="submit-btn">과실비율 심사 요청</button>
-  </form>
-
-  <p class="status" id="status"></p>
-  <pre id="result" hidden></pre>
+  <p class="error hidden" id="error" role="alert"></p>
+</main>
 
 <script>
-const form = document.getElementById("accident-form");
-const statusEl = document.getElementById("status");
-const resultEl = document.getElementById("result");
-const submitBtn = document.getElementById("submit-btn");
+// 파일로 열어도(file://) 붙도록 기본은 로컬 백엔드. ?api=https://... 로 바꿀 수 있다.
+const API = new URLSearchParams(location.search).get("api") || "http://localhost:8000";
+const $ = (id) => document.getElementById(id);
+const views = ["input", "wait", "question", "result"];
+const state = { sessionId: null, seed: null, timer: null, controller: null };
 
-form.addEventListener("submit", async (e) => {
+function show(name) {
+  views.forEach((v) => $("view-" + v).classList.toggle("hidden", v !== name));
+}
+function setError(msg) {
+  $("error").textContent = msg || "";
+  $("error").classList.toggle("hidden", !msg);
+}
+function startWait(text) {
+  $("wait-text").textContent = text;
+  $("elapsed").textContent = "0";
+  const t0 = Date.now();
+  clearInterval(state.timer);
+  state.timer = setInterval(() => ($("elapsed").textContent = Math.floor((Date.now() - t0) / 1000)), 500);
+  show("wait");
+}
+function stopWait() { clearInterval(state.timer); }
+
+// 서버가 준 문자열은 항상 textContent 로만 넣는다 (HTML 로 해석하지 않는다)
+function fillList(ul, items, render) {
+  ul.replaceChildren(...items.map((it) => { const li = document.createElement("li"); li.textContent = render(it); return li; }));
+}
+
+async function post(path, body) {
+  state.controller = new AbortController();
+  const res = await fetch(API + path, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: state.controller.signal,
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* 본문 없음 */ }
+  return { res, data };
+}
+
+function errorMessage(res, data) {
+  const d = data && data.detail;
+  if (res.status === 422 && d && d.code === "out_of_scope") return "이 서비스는 자동차 대 자동차 사고만 확인할 수 있습니다. (" + d.message + ")";
+  if (res.status === 422 && d && d.code === "invalid_option") return "선택한 답변이 올바르지 않습니다. 다시 선택해 주세요.";
+  if (res.status === 422) return "입력을 확인해 주세요: " + (Array.isArray(d) ? d.map((x) => x.msg).join(", ") : "형식이 올바르지 않습니다.");
+  if (res.status === 404) return "질문 시간이 지났거나 찾을 수 없는 요청입니다. 처음부터 다시 시도해 주세요.";
+  if (res.status === 409) return "이미 답변한 요청입니다. 처음부터 다시 시도해 주세요.";
+  if (res.status === 503) return "요청이 많습니다. 잠시 후 다시 시도해 주세요.";
+  return "오류가 발생했습니다 (HTTP " + res.status + ").";
+}
+
+function renderQuestion(data) {
+  state.sessionId = data.session_id;
+  state.seed = data.question.seed;
+  $("q-text").textContent = data.question.text;
+  $("q-notice").textContent = data.notice || "";
+  $("q-notice").classList.toggle("hidden", !data.notice);
+  const ul = $("q-options");
+  ul.replaceChildren(...data.question.options.map((o) => {
+    const li = document.createElement("li");
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio"; input.name = "option"; input.value = String(o.id);
+    input.addEventListener("change", () => ($("answer-btn").disabled = false));
+    const span = document.createElement("span");
+    span.textContent = o.label;
+    label.append(input, span);
+    li.append(label);
+    return li;
+  }));
+  $("answer-btn").disabled = true;
+  show("question");
+}
+
+function renderResult(r) {
+  const same = r.my_fault_low === r.my_fault_high;
+  const main = document.createElement("span");
+  main.textContent = same ? r.my_fault_low + "%" : r.my_fault_low + " ~ " + r.my_fault_high + "%";
+  const small = document.createElement("small");
+  small.textContent = same ? "  (내 차량 기준)" : "  (내 차량 기준, 범위)";
+  $("r-mine").replaceChildren(main, small);
+  $("bar-me").style.width = r.my_fault_low + "%";
+  $("bar-range").style.width = r.my_fault_high - r.my_fault_low + "%";
+  $("r-other").textContent = "상대 차량: " + (r.other_fault_low === r.other_fault_high ? r.other_fault_low + "%" : r.other_fault_low + " ~ " + r.other_fault_high + "%");
+
+  $("r-assumption").textContent = r.assumption;
+  $("r-assumption").classList.toggle("hidden", !r.assumption);
+
+  $("r-uncertain").textContent = "검토 의견이 갈린 사고입니다. 결과를 그대로 믿기보다 보험사 설명이나 전문가 상담으로 확인해 보시기를 권합니다.";
+  $("r-uncertain-card").classList.toggle("hidden", !r.uncertain);
+
+  $("r-explanation").textContent = r.explanation;
+  fillList($("r-charts"), r.charts, (c) => c.chart_no + " " + c.label);
+  $("r-charts-wrap").classList.toggle("hidden", r.charts.length === 0);
+
+  fillList($("r-evidence"), r.evidence_to_check, (e) => e);
+  $("r-evidence-card").classList.toggle("hidden", r.evidence_to_check.length === 0);
+
+  $("r-other-text").textContent = r.other_possibilities;
+  $("r-other-card").classList.toggle("hidden", !r.other_possibilities);
+  $("r-disclaimer").textContent = r.disclaimer;
+  show("result");
+}
+
+function handle(res, data) {
+  stopWait();
+  if (!res.ok) { setError(errorMessage(res, data)); show(state.sessionId && res.status === 422 ? "question" : "input"); return; }
+  if (data.status === "needs_answer") renderQuestion(data);
+  else { state.sessionId = null; renderResult(data.result); }
+}
+
+$("accident-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  submitBtn.disabled = true;
-  statusEl.textContent = "심사 요청 중... (mock 모드에서는 몇 초 내로 응답)";
-  resultEl.hidden = true;
-
-  const payload = {
-    accident_type: document.getElementById("accident_type").value || null,
-    signal_state: document.getElementById("signal_state").value,
-    lane_info: document.getElementById("lane_info").value || null,
-    speed_a_kmh: parseFloat(document.getElementById("speed_a").value) || null,
-    speed_b_kmh: parseFloat(document.getElementById("speed_b").value) || null,
-    description: document.getElementById("description").value,
-    image_urls: [],
+  setError("");
+  state.sessionId = null;
+  const num = (id) => { const v = parseFloat($(id).value); return Number.isNaN(v) ? null : v; };
+  const body = {
+    description: $("description").value,
+    lane_info: $("lane_info").value || null,
+    speed_a_kmh: num("speed_a"),
+    speed_b_kmh: num("speed_b"),
   };
-
-  try {
-    const res = await fetch("http://localhost:8000/assess", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (res.status === 422) {
-      const body = await res.json();
-      const d = body.detail;
-      if (d && d.code === "out_of_scope") {
-        statusEl.textContent = `지원하지 않는 사고 유형 (${d.category}): ${d.message}`;
-        return;
-      }
-      // 입력 검증 오류 (예: 설명이 너무 짧음)
-      statusEl.textContent = "입력을 확인해 주세요: " + (Array.isArray(d) ? d.map((x) => x.msg).join(", ") : JSON.stringify(d));
-      return;
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    statusEl.textContent = data.warnings && data.warnings.length ? "완료 (유의: " + data.warnings.join(" / ") + ")" : "완료";
-    resultEl.hidden = false;
-    resultEl.textContent = JSON.stringify(data, null, 2);
-  } catch (err) {
-    statusEl.textContent = `오류: ${err.message} (백엔드가 실행 중인지 확인하세요)`;
-  } finally {
-    submitBtn.disabled = false;
-  }
+  startWait("사고 상황을 분석하는 중입니다.");
+  try { const { res, data } = await post("/v1/assess", body); handle(res, data); }
+  catch (err) { stopWait(); show("input"); setError("서버에 연결하지 못했습니다. 백엔드가 실행 중인지 확인해 주세요."); }
 });
+
+$("answer-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  setError("");
+  const picked = document.querySelector('input[name="option"]:checked');
+  if (!picked) return;
+  const id = state.sessionId;
+  startWait("답변을 반영하는 중입니다.");
+  try {
+    const { res, data } = await post("/v1/assess/" + encodeURIComponent(id) + "/answer", { option_id: Number(picked.value), seed: state.seed });
+    if (!res.ok && res.status === 422) state.sessionId = id;   // 잘못된 선택은 세션이 열려 있으므로 질문으로 돌아간다
+    handle(res, data);
+  } catch (err) { stopWait(); show("question"); setError("서버에 연결하지 못했습니다."); }
+});
+
+$("restart-btn").addEventListener("click", () => { setError(""); state.sessionId = null; show("input"); window.scrollTo(0, 0); });
 </script>
 </body>
 </html>
