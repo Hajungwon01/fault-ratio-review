@@ -56,7 +56,8 @@ class FaultAssessmentPipeline:
 
         rounds = []
         # 사고 정황으로 후보 기준표를 한 번 조회해 논증/검증 에이전트에 공통 주입
-        reference_charts = format_candidates(find_candidate_charts(accident_input))
+        candidates = find_candidate_charts(accident_input)
+        reference_charts = format_candidates(candidates)
         # 에이전트에는 파이썬 repr 이 아니라 읽기 쉬운 텍스트를 준다
         accident_text = accident_input.to_prompt_text()
         base_ctx = {"accident_input": accident_text, "reference_charts": reference_charts}
@@ -93,6 +94,9 @@ class FaultAssessmentPipeline:
             "fact_check": fact_check,
             "cited_charts": format_cited_charts(cited),
             "cited_chart_numbers": list(cited),
+            # 질문 단계가 보기에 쓸 수 있는 도표: 인용된 도표 + 검색 후보 (후보의 상세 내용도 함께 준다)
+            "candidate_chart_numbers": [m.chart_no for m in candidates],
+            "reference_charts": reference_charts,
             "precedents": format_precedents(cited),
         }
         results = await asyncio.gather(*(r.run(reviewer_context) for r in self.reviewers), return_exceptions=True)

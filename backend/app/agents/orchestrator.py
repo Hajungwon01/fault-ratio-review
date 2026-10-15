@@ -103,11 +103,11 @@ CLARIFY_PROMPT = (
     "(예: 신호를 묻는다면 내 신호가 녹색인 경우도 반드시 포함). 위원들이 가정한 사실이 있으면 그 사실을 우선 질문으로 만드세요.\n"
     "- 질문과 보기는 일반 운전자가 읽는 문장으로 쓰세요. 도표번호, \"정황 A/B\", \"도표\", \"과실\", \"비율\" 같은 내부 용어는 쓰지 말고 "
     "\"내 차량\"·\"상대 차량\"으로 부르세요.\n"
-    "- 보기마다 그 답이 맞을 때의 도표번호(chart_no)와 결과를 적습니다. 도표번호는 [인용 도표 상세]에 있는 것만 쓰세요.\n"
+    "- 보기마다 그 답이 맞을 때의 도표번호(chart_no)와 결과를 적습니다. 도표번호는 [보기에 쓸 수 있는 도표번호]에 있는 것만 쓰세요.\n"
     "- scene_a_fault: 그 보기가 맞을 때 **정황의 A(나의 차량)** 입장의 최종 과실비율 (도표의 A 기준이 아니라 정황 기준). "
     "나의 차량이 도표의 A 인지 B 인지 먼저 대응시킨 뒤 계산하세요.\n"
     "- evidence: 그 사실을 확인할 수 있는 증거 (블랙박스, 신호 주기 기록, 경찰 조사 등)를 적습니다.\n"
-    "- 주어진 [인용 도표 상세] 밖의 도표번호·비율을 만들어 쓰지 마세요."
+    "- [보기에 쓸 수 있는 도표번호] 밖의 도표번호·비율을 만들어 쓰지 마세요. 도표의 내용은 [인용 도표 상세]와 [검색 후보 도표 상세]에 있습니다."
 )
 
 
@@ -135,6 +135,15 @@ def ambiguity_signals(reviews) -> list[str]:
     return signals
 
 
+def allowed_numbers(context: dict[str, Any]) -> set[str]:
+    """질문 보기에 쓸 수 있는 도표번호: 인용된 도표 + 검색 후보 + 위원이 고른 도표."""
+    return (
+        set(context.get("cited_chart_numbers") or [])
+        | set(context.get("candidate_chart_numbers") or [])
+        | {r.chart_no for r in context["reviews"] if r.chart_no}
+    )
+
+
 def _format_review_summary(reviews) -> str:
     return "\n".join(
         f"- {r.perspective} (확신 {r.confidence}): 도표 {r.chart_no or '-'}, 정황 A 과실 {r.scene_a_fault}\n"
@@ -159,7 +168,9 @@ async def plan_clarification(llm, context: dict[str, Any]):
     user_prompt = (
         f"[사고 정황]\n{context['accident_input']}\n\n"
         f"[검토위원 결론]\n{_format_review_summary(context['reviews'])}\n\n"
-        f"[인용 도표 상세]\n{context.get('cited_charts', '(없음)')}\n"
+        f"[인용 도표 상세]\n{context.get('cited_charts', '(없음)')}\n\n"
+        f"[검색 후보 도표 상세]\n{context.get('reference_charts', '(없음)')}\n\n"
+        f"[보기에 쓸 수 있는 도표번호]\n{', '.join(sorted(allowed_numbers(context))) or '(제한 없음)'}\n"
     )
     plan = await llm.complete_json(CLARIFY_PROMPT, user_prompt, ClarificationPlan, mock={"questions": []})
     if not plan.questions:
@@ -167,8 +178,9 @@ async def plan_clarification(llm, context: dict[str, Any]):
 
     q = plan.questions[0]
     warnings: list[str] = []
-    # 보기의 도표는 A/B 에이전트나 위원이 실제로 인용한 도표로 제한한다 (정황과 안 맞는 도표가 보기로 끼어드는 것 방지)
-    allowed = set(context.get("cited_chart_numbers") or []) | {r.chart_no for r in context["reviews"] if r.chart_no}
+    # 보기의 도표는 인용된 도표·검색 후보·위원이 고른 도표로 제한한다 (정황과 상관없는 도표가 보기로 끼어드는 것 방지).
+    # 인용된 도표만 허용하면 정황이 모호해 에이전트들이 엉뚱한 도표를 인용했을 때 맞는 도표가 보기에 들어갈 수 없다 (실측 D14).
+    allowed = allowed_numbers(context)
     if allowed:
         kept = [o for o in q.options if o.chart_no.strip() in allowed]
         if len(kept) < len(q.options):

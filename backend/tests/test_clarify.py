@@ -105,8 +105,10 @@ def ctx(reviews=None, cited=("차2-2", "차2-5", "차2-6")):
     return {"accident_input": "x", "reviews": reviews, "cited_charts": "■ 차2-2 ■ 차2-6", "cited_chart_numbers": list(cited)}
 
 
-def run_plan(q, reviews=None, cited=("차2-2", "차2-5", "차2-6")):
-    return asyncio.run(plan_clarification(PlanLLM(plan_for(q)), ctx(reviews, cited)))
+def run_plan(q, reviews=None, cited=("차2-2", "차2-5", "차2-6"), candidates=()):
+    context = ctx(reviews, cited)
+    context["candidate_chart_numbers"] = list(candidates)
+    return asyncio.run(plan_clarification(PlanLLM(plan_for(q)), context))
 
 
 def test_question_is_kept_when_outcomes_differ_a_lot():
@@ -143,7 +145,7 @@ def test_duplicate_options_are_dropped():
 def test_prompt_forbids_leaking_outcomes():
     from app.agents.orchestrator import CLARIFY_PROMPT
 
-    for must in ("법적 결론", "과실비율·도표번호", "정황의 A(나의 차량)", "evidence", "[인용 도표 상세] 밖"):
+    for must in ("법적 결론", "과실비율·도표번호", "정황의 A(나의 차량)", "evidence", "[보기에 쓸 수 있는 도표번호] 밖"):
         assert must in CLARIFY_PROMPT
 
 
@@ -296,3 +298,49 @@ def test_prompt_requires_complete_options_and_plain_words():
 
     assert "빠짐없이" in CLARIFY_PROMPT and "유리한 경우와 불리한 경우" in CLARIFY_PROMPT
     assert "내부 용어" in CLARIFY_PROMPT and "가정한 사실" in CLARIFY_PROMPT
+
+
+# ---------- 보기에 쓸 수 있는 도표 = 인용된 도표 + 검색 후보 + 위원이 고른 도표 ----------
+def test_search_candidates_are_allowed_even_if_nobody_cited_them():
+    # 실제 D14: 에이전트들이 엉뚱한 도표를 인용해도, 검색 후보에 있는 맞는 도표(차1-1, 차1-4)는 보기로 쓸 수 있어야 한다
+    q = question([opt("내 방향 신호가 녹색이었다", "차1-1", 0), opt("양쪽 모두 적색이었다", "차1-4", 50),
+                  opt("내 방향 신호가 적색이었다", "차1-1", 100)])
+    questions, note, warnings = run_plan(q, cited=("차3-1",), candidates=("차1-1", "차1-4"))
+    assert len(questions) == 1 and len(questions[0].options) == 3 and warnings == []
+
+    # 후보에도 인용에도 없는 도표는 여전히 제외된다
+    questions, note, warnings = run_plan(q, cited=("차3-1",), candidates=("차1-1",))
+    assert [o.chart_no for o in questions[0].options] == ["차1-1", "차1-1"] and "차1-4" in warnings[0]
+
+
+def test_planner_prompt_lists_allowed_numbers_and_candidate_details():
+    seen = {}
+
+    class Spy(PlanLLM):
+        async def complete_json(self, system_prompt, user_prompt, model_cls, *, mock, max_attempts=3):
+            seen["prompt"] = user_prompt
+            return model_cls.model_validate({"questions": []})
+
+    c = ctx()
+    c["candidate_chart_numbers"] = ["차1-1", "차1-4"]
+    c["reference_charts"] = "■ 차1-1 후보 상세"
+    asyncio.run(plan_clarification(Spy({}), c))
+    p = seen["prompt"]
+    assert "[검색 후보 도표 상세]" in p and "차1-1 후보 상세" in p
+    allowed_line = p.split("[보기에 쓸 수 있는 도표번호]")[1]
+    assert "차1-1" in allowed_line and "차1-4" in allowed_line and "차2-6" in allowed_line
+
+
+def test_pipeline_passes_candidates_to_planner(monkeypatch):
+    import app.core.pipeline as pl
+
+    got = {}
+
+    async def spy(llm, context):
+        got.update(context)
+        return [], "", []
+
+    monkeypatch.setattr(pl, "plan_clarification", spy)
+    asyncio.run(FaultAssessmentPipeline().run(AccidentInput(description=DESC)))
+    assert got["candidate_chart_numbers"] and all(n.startswith("차") for n in got["candidate_chart_numbers"])
+    assert "reference_charts" in got and "cited_chart_numbers" in got
