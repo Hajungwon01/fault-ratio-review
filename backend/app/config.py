@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # 도표 검색 방식: keyword | embedding | hybrid (embedding/hybrid 는 requirements-embedding.txt 필요)
     chart_search_mode: str = "keyword"
 
+    # 내부·개발용 /assess (FaultReport 전체: 보기별 도표·과실, 위원 의견 포함). 사용자에게 공개하는 환경에서는 false 로 끈다.
+    internal_api_enabled: bool = True
+
     @property
     def llm_mock_mode(self) -> bool:
         key = self.openai_api_key if self.llm_provider == "openai" else self.anthropic_api_key
