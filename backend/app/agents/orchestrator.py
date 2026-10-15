@@ -9,10 +9,11 @@ TODO(8주차): 편차 계산 방식(표준편차 vs 최대-최소 등)과 임계
 """
 from __future__ import annotations
 
+import logging
 import statistics
 from typing import Any
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, format_fact_check
 from app.models.schemas import FaultReport
 
 # "정밀 심사 필요" 판정 기준 — 둘 중 하나라도 넘으면 플래그. 둘 다 평가셋 실측 후 조정할 초기값이다 (#13).
@@ -28,14 +29,50 @@ DEVIATION_THRESHOLD = 15.0  # 위원 A과실의 모집단 표준편차
 LOW_CONFIDENCE_REVIEWERS = 2
 
 
+logger = logging.getLogger(__name__)
+
+
+def basis_header(reviews, a: int, b: int) -> str:
+    """리포트 근거의 숫자 부분. 모델이 숫자를 다시 쓰다 틀리지 않도록 코드가 만든다."""
+    lines = [f"최종(위원 중앙값): 나(A) {a} : 상대(B) {b}"]
+    for r in reviews:
+        line = f"- {r.perspective}: A {r.fault_ratio_a} (도표 {r.chart_no or '-'}, 확신 {r.confidence})"
+        if r.assumed_facts:
+            line += " / 가정한 사실: " + "; ".join(r.assumed_facts)
+        if r.warnings:
+            line += f" / 평가 의심 {len(r.warnings)}건"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _basis_user_prompt(reviews, a: int, b: int, deviation: float, fact_check) -> str:
+    blocks = [
+        f"- {r.perspective} (확신 {r.confidence}): 도표 {r.chart_no or '-'}, A {r.fault_ratio_a}\n"
+        f"  가정한 사실: {'; '.join(r.assumed_facts) or '없음'}\n"
+        f"  근거: {r.rationale.strip()[:400]}"
+        for r in reviews
+    ]
+    return (
+        f"[최종 결론(위원 중앙값)]\n나(A) {a} : 상대(B) {b} (위원 간 표준편차 {deviation})\n\n"
+        f"[검토위원 결론]\n" + "\n".join(blocks) + "\n\n"
+        f"[사실검증 결과]\n{format_fact_check(fact_check)}\n"
+    )
+
+
 class ProceedingAgent(BaseAgent):
     name = "proceeding_agent"
 
     @property
     def system_prompt(self) -> str:
         return (
-            "당신은 검토위원 3인의 평가를 취합해 최종 과실비율 심사 리포트를 작성하는 진행 에이전트입니다.\n"
-            "직접 판정을 내리지 않고, 위원들의 평가를 집계·요약하는 역할만 합니다."
+            "당신은 검토위원 3인의 평가를 취합하는 진행 에이전트입니다. 직접 판정하거나 비율을 바꾸지 않고, "
+            "위원들이 낸 결과를 읽기 쉬운 요약으로 정리하는 역할만 합니다.\n\n"
+            "[요약 규칙]\n"
+            "- 한국어 문단 하나, 4~6문장. 첫 문장에 최종 결론과 적용된 도표를 씁니다.\n"
+            "- 위원들의 의견이 일치하는 점과 갈리는 점(비율·도표)을 구분해 씁니다.\n"
+            "- 결론이 의존하는 '가정한 사실'이 있으면 반드시 언급하고, 사실검증이 지적한 인용 오류가 있으면 짚습니다.\n"
+            "- 주어진 값 밖의 도표번호·비율·판례·법조항을 만들어 쓰지 마세요. 숫자는 주어진 것만 그대로 쓰세요.\n"
+            "- 나의 차량=A, 상대 차량=B 기준으로 쓰세요."
         )
 
     async def run(self, context: dict[str, Any]) -> FaultReport:
@@ -48,10 +85,17 @@ class ProceedingAgent(BaseAgent):
         deviation = round(statistics.pstdev(ratios_a), 1) if len(ratios_a) > 1 else 0.0
         spread = (max(ratios_a) - min(ratios_a)) if ratios_a else 0
 
-        basis = await self.llm.complete(
-            self.system_prompt,
-            f"검토위원 평가: {reviews}\n중앙값 A과실: {avg_a}, 편차: {deviation}",
-        )
+        # 숫자 부분은 코드가 만들고, 요약 문단만 모델에게 맡긴다 (요약 생성이 실패해도 심사 결과는 유지한다)
+        header = basis_header(reviews, avg_a, avg_b)
+        try:
+            narrative = await self.llm.complete(
+                self.system_prompt,
+                _basis_user_prompt(reviews, avg_a, avg_b, deviation, context.get("fact_check")),
+            )
+            basis = f"{header}\n\n{narrative.strip()}"
+        except Exception as e:  # noqa: BLE001 - 요약은 보조 산출물
+            logger.warning("근거 요약 생성 실패: %s", e)
+            basis = header
 
         reasons: list[str] = []
         if spread >= SPREAD_THRESHOLD:
