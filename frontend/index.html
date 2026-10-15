@@ -16,7 +16,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font-family: -apple-system, "Segoe UI", "맑은 고딕", sans-serif; line-height: 1.6; }
-  main { max-width: 680px; margin: 0 auto; padding: 24px 16px 64px; }
+  main { max-width: 680px; margin: 0 auto; padding: 24px 16px 64px; overflow-wrap: anywhere; }
   h1 { font-size: 22px; margin: 8px 0 4px; }
   h2 { font-size: 17px; margin: 0 0 12px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
@@ -31,11 +31,12 @@
   button.secondary { background: transparent; color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
   details { margin-top: 14px; }
-  summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 12px 0; }
   .options { margin: 8px 0 0; padding: 0; list-style: none; }
   .options label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-top: 8px;
                    border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
-  .options input { width: auto; margin: 4px 0 0; }
+  .options input { width: 20px; height: 20px; flex: none; margin: 2px 0 0; }
+  .options label span { min-width: 0; }
   .options label:has(input:checked) { border-color: var(--accent); background: var(--soft); }
   .range { font-size: 28px; font-weight: 700; margin: 4px 0; }
   .range small { font-size: 14px; font-weight: 400; color: var(--muted); }
@@ -112,7 +113,7 @@
       <div class="muted" id="r-other"></div>
       <p class="notice hidden" id="r-assumption"></p>
     </div>
-    <div class="card hidden" id="r-uncertain-card"><p class="notice" id="r-uncertain"></p></div>
+    <div class="hidden" id="r-uncertain-card" style="margin-bottom:16px"><p class="notice" id="r-uncertain" style="margin:0"></p></div>
     <div class="card">
       <h2>이렇게 판단한 이유</h2>
       <div class="pre" id="r-summary"></div>
