@@ -129,9 +129,11 @@ class FaultAssessmentPipeline:
             report.flag_reasons.append("위원 평가가 도표 기본 비율 등과 어긋남 (경고 참고)")
         # 질문 단계: 정황에 없는 사실 때문에 결과가 크게 갈리면 사용자에게 물을 질문을 만든다 (실패해도 심사 결과는 유지)
         try:
+            trace: list[str] = []
             questions, note, q_warnings = await plan_clarification(
-                self.llm, {**reviewer_context, "reviews": reviews}
+                self.llm, {**reviewer_context, "reviews": reviews, "trace": trace}
             )
+            report.clarification_trace = " | ".join(trace)
             report.clarifications = questions
             report.needs_clarification = bool(questions)
             report.clarification_note = note

@@ -215,9 +215,16 @@ async def plan_clarification(llm, context: dict[str, Any]):
     from app.core.verdict_check import check_scene_vs_chart_any_role
     from app.models.schemas import ClarificationPlan
 
+    # 진단용 기록(리포트의 clarification_trace): 질문이 왜 나왔는지/안 나왔는지 사후에 볼 수 있게 한다
+    trace = context.get("trace")
+    log = trace.append if trace is not None else (lambda _msg: None)
+
     # 위원들이 같은 도표·같은 값·높은 확신이면 정황이 충분히 정해진 사고로 보고 질문을 만들지 않는다 (명백한 사례에서 질문을 지어낸 오탐 방지)
-    if not ambiguity_signals(context["reviews"]):
+    signals = ambiguity_signals(context["reviews"])
+    if not signals:
+        log("게이트 닫힘: 모호함 신호 없음")
         return [], "", []
+    log("게이트 열림: " + ", ".join(signals))
 
     user_prompt = (
         f"[사고 정황]\n{context['accident_input']}\n\n"
@@ -228,9 +235,11 @@ async def plan_clarification(llm, context: dict[str, Any]):
     )
     plan = await llm.complete_json(CLARIFY_PROMPT, user_prompt, ClarificationPlan, mock={"questions": []})
     if not plan.questions:
+        log("질문 계획: 질문 불필요로 판단")
         return [], "", []
 
     q = plan.questions[0]
+    log(f"질문 계획: 질문 생성(보기 {len(q.options)}개)")
     warnings: list[str] = []
     # 보기의 도표는 인용된 도표·검색 후보·위원이 고른 도표로 제한한다 (정황과 상관없는 도표가 보기로 끼어드는 것 방지).
     # 인용된 도표만 허용하면 정황이 모호해 에이전트들이 엉뚱한 도표를 인용했을 때 맞는 도표가 보기에 들어갈 수 없다 (실측 D14).
@@ -241,24 +250,30 @@ async def plan_clarification(llm, context: dict[str, Any]):
             dropped = sorted({o.chart_no for o in q.options} - allowed)
             warnings.append(f"질문 단계: 인용되지 않은 도표를 쓴 보기를 제외했습니다 ({', '.join(dropped)})")
             if len(kept) < 2:
+                log("폐기: 허용 도표 밖 보기 제외 후 보기 부족")
                 return [], "", warnings
             q = q.model_copy(update={"options": kept})
     problems = [p for o in q.options for p in check_scene_vs_chart_any_role(o.chart_no.strip(), o.scene_a_fault)]
     if problems:
         warnings.append(f"질문 단계: 보기의 도표·과실이 도표 데이터와 맞지 않아 질문을 생략했습니다 ({problems[0]})")
+        log("폐기: 보기 값이 도표 데이터와 불일치")
         return [], "", warnings
     if len({o.label.strip() for o in q.options}) < len(q.options):
         warnings.append("질문 단계: 보기가 중복되어 질문을 생략했습니다")
+        log("폐기: 보기 중복")
         return [], "", warnings
 
     # 사용자에게 보이는 문장에 내부 용어·도표번호·과실 수치가 새면 질문을 버린다 (결과 숨김 원칙을 코드로 강제)
     leaks = [t for t in [q.question] if QUESTION_LEAK.search(t)] + [o.label for o in q.options if LABEL_LEAK.search(o.label)]
     if leaks:
         warnings.append(f"질문 단계: 질문·보기에 내부 용어나 수치가 섞여 질문을 생략했습니다 ('{leaks[0][:40]}')")
+        log("폐기: 질문·보기에 내부 용어/수치 누출")
         return [], "", warnings
 
     faults = [o.scene_a_fault for o in q.options]
     if max(faults) - min(faults) <= CLARIFY_MIN_DIFF:
+        log(f"참고 문구로 대체: 보기별 결과 차이 {max(faults) - min(faults)}%p")
         detail = ", ".join(f"{o.chart_no} 적용 시 A {o.scene_a_fault}" for o in q.options)
         return [], f"정황에 없는 사실에 따라 적용 도표가 달라질 수 있으나 결과 차이는 작습니다 ({detail})", warnings
+    log(f"질문 채택: 보기별 결과 차이 {max(faults) - min(faults)}%p")
     return [q], "", warnings

@@ -344,3 +344,42 @@ def test_pipeline_passes_candidates_to_planner(monkeypatch):
     asyncio.run(FaultAssessmentPipeline().run(AccidentInput(description=DESC)))
     assert got["candidate_chart_numbers"] and all(n.startswith("차") for n in got["candidate_chart_numbers"])
     assert "reference_charts" in got and "cited_chart_numbers" in got
+
+
+# ---------- 진단 기록(clarification_trace): 질문이 왜 나왔는지/안 나왔는지 ----------
+def trace_for(q, reviews=None, cited=("차2-2", "차2-5", "차2-6")):
+    context = ctx(reviews, cited)
+    context["candidate_chart_numbers"] = []
+    context["trace"] = []
+    asyncio.run(plan_clarification(PlanLLM(plan_for(q)), context))
+    return context["trace"]
+
+
+def test_trace_records_gate_closed_and_open():
+    agree = [review("차43-2", 20), review("차43-2", 20), review("차43-2", 20)]
+    assert trace_for(question(), agree) == ["게이트 닫힘: 모호함 신호 없음"]
+    t = trace_for(question())
+    assert t[0].startswith("게이트 열림: ") and "서로 다른 도표" in t[0] and t[-1] == "질문 채택: 보기별 결과 차이 50%p"
+
+
+@pytest.mark.parametrize("q,expected", [
+    (None, "질문 계획: 질문 불필요로 판단"),
+    (question([opt("가", "차2-2", 0), opt("나", "차2-6", 10)]), "참고 문구로 대체: 보기별 결과 차이 10%p"),
+    (question([opt("같은 보기", "차2-2", 0), opt("같은 보기", "차2-6", 10)]), "폐기: 보기 중복"),
+    (question([opt("가", "차2-2", 50), opt("나", "차2-6", 10)]), "폐기: 보기 값이 도표 데이터와 불일치"),
+    (question([opt("과실 큰 쪽", "차2-2", 0), opt("나", "차2-6", 90)]), "폐기: 질문·보기에 내부 용어/수치 누출"),
+])
+def test_trace_records_why_no_question(q, expected):
+    assert expected in trace_for(q)
+
+
+def test_pipeline_report_and_scenario_result_carry_the_trace_and_summary_check():
+    from app.evaluation.scenarios import check_user_summary, evaluate_report, Scenario
+
+    r = asyncio.run(FaultAssessmentPipeline().run(AccidentInput(description=DESC)))
+    assert r.clarification_trace.startswith("게이트 ")              # mock 위원은 확신 medium 이라 게이트가 열리고 mock 계획은 질문 없음
+    sc = Scenario.model_validate({"id": "T", "description": DESC, "expected_chart": ["차2-2"]})
+    res = evaluate_report(sc, r)
+    assert res.clarification_trace == r.clarification_trace and res.basis == r.basis
+    assert res.summary_problems == ["설명 없음"] == check_user_summary(r)        # mock 은 사용자용 설명이 비어 있다
+    assert set(res.reviewer_assumed) == {v.perspective for v in r.reviews}

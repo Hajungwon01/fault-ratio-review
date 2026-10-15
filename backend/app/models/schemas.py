@@ -205,6 +205,7 @@ class FaultReport(BaseModel):
     )
     needs_clarification: bool = Field(False, description="clarifications 의 보기별 결과 차이가 임계값을 넘어 질문이 필요한지")
     clarification_note: str = Field("", description="도표가 갈려도 결과 차이가 작아 묻지 않은 경우의 참고 문구")
+    clarification_trace: str = Field("", description="[내부용] 질문 단계 진단 기록: 게이트 열림/닫힘, 계획 결과, 폐기 사유")
     needs_precise_review: bool = Field(
         ..., description="편차가 임계값을 넘어 정밀 심사가 필요한 사고인지 여부"
     )

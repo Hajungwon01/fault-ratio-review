@@ -108,6 +108,11 @@ class ScenarioResult:
     reviewer_confidence: dict[str, str] = field(default_factory=dict)  # 위원별 확신(high/medium/low) — 플래그 기준 조정용
     flag_reasons: list[str] = field(default_factory=list)
     needs_clarification: bool = False
+    clarification_trace: str = ""                                       # 질문 단계 진단: 게이트·계획·폐기 사유
+    reviewer_assumed: dict[str, list[str]] = field(default_factory=dict)  # 위원별 가정한 사실
+    basis: str = ""
+    user_summary: str = ""
+    summary_problems: list[str] = field(default_factory=list)           # 사용자용 설명이 검증에서 걸린 이유 (비면 통과 또는 없음)
     expects_question: Optional[bool] = None
     clarification_hit: Optional[bool] = None   # expects_question 이 있을 때 needs_clarification 과 일치하는지
     clarification: str = ""        # 만든 질문과 보기별 (도표, 정황 A 과실). 질문이 없으면 참고 문구
@@ -146,6 +151,17 @@ def _reviewer_texts(report: FaultReport) -> list[str]:
     if not any(CHART_RE.search(t) for t in texts):  # 위원이 도표를 안 적었으면 2라운드 논증으로 대체
         texts = [a.content for a in report.rounds if a.round == max((x.round for x in report.rounds), default=1)]
     return texts
+
+
+def check_user_summary(report) -> list[str]:
+    """파이프라인이 만든 사용자용 설명이 사용자 API 의 검증을 통과하는지 (없으면 빈 목록이 아니라 '없음' 한 항목)."""
+    from app.core.user_flow import basis_for
+    from app.core.user_text import validate_user_summary
+
+    if not report.user_summary:
+        return ["설명 없음"]
+    faults = [r.fault_ratio_a for r in report.reviews] or [report.fault_ratio_a]
+    return validate_user_summary(report.user_summary, basis_for(report, None), min(faults), max(faults))
 
 
 def format_clarification(report) -> str:
@@ -195,6 +211,11 @@ def evaluate_report(scenario: Scenario, report: FaultReport, *, seconds: float =
         reviewer_confidence={r.perspective: r.confidence for r in report.reviews},
         flag_reasons=list(report.flag_reasons),
         needs_clarification=report.needs_clarification,
+        clarification_trace=report.clarification_trace,
+        reviewer_assumed={r.perspective: list(r.assumed_facts) for r in report.reviews},
+        basis=report.basis,
+        user_summary=report.user_summary,
+        summary_problems=check_user_summary(report),
         expects_question=scenario.expects_question,
         clarification_hit=None if scenario.expects_question is None else report.needs_clarification == scenario.expects_question,
         clarification=format_clarification(report),
