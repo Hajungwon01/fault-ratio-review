@@ -233,3 +233,66 @@ def test_option_with_uncited_chart_is_removed_and_may_drop_the_question():
     only_one_left = question([opt("가", "차2-2", 0), opt("나", "차2-1", 60)])
     questions, note, warnings = run_plan(only_one_left, cited=("차2-2",))
     assert questions == [] and note == "" and "인용되지 않은" in warnings[0]
+
+
+# ---------- 위원이 가정한 사실이 있으면 질문 생성을 연다 (D15: 전원 high 확신으로 조용히 가정) ----------
+def test_assumed_facts_open_the_gate_even_when_everything_agrees():
+    from app.agents.orchestrator import ambiguity_signals
+
+    agree = [review("차6-1", 80) for _ in range(3)]
+    assert ambiguity_signals(agree) == []
+    agree[0].assumed_facts = ["상대 방향 신호가 녹색이었다"]
+    assert any("가정" in x for x in ambiguity_signals(agree))
+
+
+def test_assumed_facts_reach_the_planner_prompt_and_reviewer_rules():
+    from app.agents.orchestrator import _format_review_summary
+    from app.agents.reviewer_standard import ReviewerStandardAgent
+    from app.agents.reviewer_scene import ReviewerSceneAgent
+    from app.agents.reviewer_precedent import ReviewerPrecedentAgent
+
+    r = review("차6-1", 80)
+    r.assumed_facts = ["상대 방향 신호가 녹색이었다"]
+    assert "상대 방향 신호가 녹색이었다" in _format_review_summary([r])
+    for cls in (ReviewerStandardAgent, ReviewerSceneAgent, ReviewerPrecedentAgent):
+        assert "assumed_facts" in cls.OUTPUT_RULES and "가정을 숨기지 마세요" in cls.OUTPUT_RULES
+
+
+def test_reviewer_score_carries_assumed_facts():
+    import asyncio as _a
+    from app.agents.reviewer_standard import ReviewerStandardAgent
+    from tests.test_role_conversion import FakeJsonLLM
+
+    payload = {"checklist": [], "rationale": "r", "assumed_facts": [" 상대 신호는 녹색 ", ""], "scene_a_fault": 80,
+               "chart_no": "차6-1", "chart_a_is": "A", "confidence": "high", "cited_rules": []}
+    ctx_ = {"accident_input": "x", "rounds": [], "fact_check": None, "cited_charts": "■ 차6-1"}
+    s = _a.run(ReviewerStandardAgent(FakeJsonLLM(payload)).run(ctx_))
+    assert s.assumed_facts == ["상대 신호는 녹색"]               # 공백/빈 항목은 정리한다
+
+
+# ---------- 사용자에게 보이는 문장에 내부 용어가 새면 질문을 버린다 ----------
+@pytest.mark.parametrize("label", [
+    "나(정황 A)의 진행로는 적색 신호였다",       # 실제 D14 보기에 섞였던 내부 용어
+    "차2-2 가 적용되는 신호였다",
+    "과실이 큰 쪽의 신호였다",
+    "녹색 신호였고 비율은 10% 였다",
+])
+def test_internal_terms_in_option_label_drop_the_question(label):
+    q = question([opt(label, "차2-2", 0), opt("정지선 앞 점멸 신호였다", "차2-6", 90)])
+    questions, note, warnings = run_plan(q)
+    assert questions == [] and "내부 용어" in warnings[0]
+
+
+def test_internal_terms_in_question_text_drop_the_question():
+    q = question()
+    q = q.model_copy(update={"question": "도표 차2-2 를 적용하려는데 상대 신호는?"})
+    assert "내부 용어" in run_plan(q)[2][0]
+    ok = question().model_copy(update={"question": "충돌 직전 내 방향과 상대 방향의 신호는 각각 무엇이었나요?"})
+    assert run_plan(ok)[0]                                          # 일반 문장은 통과
+
+
+def test_prompt_requires_complete_options_and_plain_words():
+    from app.agents.orchestrator import CLARIFY_PROMPT
+
+    assert "빠짐없이" in CLARIFY_PROMPT and "유리한 경우와 불리한 경우" in CLARIFY_PROMPT
+    assert "내부 용어" in CLARIFY_PROMPT and "가정한 사실" in CLARIFY_PROMPT

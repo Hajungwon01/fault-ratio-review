@@ -114,6 +114,10 @@ class ReviewerVerdict(BaseModel):
 
     checklist: list[ChecklistItem] = Field(default_factory=list, description="관점별 체크리스트 항목별 판단")
     rationale: str = Field(..., min_length=1, description="평가 근거. 적용한 도표·가감요소·정황을 구체적으로")
+    assumed_facts: list[str] = Field(
+        default_factory=list,
+        description="판단에 필요하지만 정황에 적혀 있지 않아 **가정한 사실** 목록(예: '상대 방향 신호가 녹색'). 가정 없이 정황만으로 판단했으면 빈 목록",
+    )
     scene_a_fault: int = Field(
         ..., ge=0, le=100,
         description="**정황의 A(나의 차량)** 입장의 최종 과실비율(0~100 정수). 최종 결론이며 위원 집계에 쓰인다",
@@ -151,6 +155,7 @@ class ReviewScore(BaseModel):
     chart_no: str = ""
     chart_a_is: Literal["A", "B", "none"] = "none"
     scene_a_fault: Optional[int] = None  # 모델이 직접 적은 정황 A 기준 과실 (fault_ratio_a 와 같다)
+    assumed_facts: list[str] = Field(default_factory=list, description="위원이 정황에 없는데 가정하고 판단한 사실")
     warnings: list[str] = Field(default_factory=list, description="도표 기본 비율과의 불일치 등 이 평가의 신뢰 문제")
 
 

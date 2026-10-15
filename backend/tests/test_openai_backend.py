@@ -108,7 +108,7 @@ def test_unknown_provider_rejected(monkeypatch):
 def test_strict_schema_requires_all_fields_and_closes_objects():
     s = strict_json_schema(ReviewerVerdict)
     assert s["additionalProperties"] is False
-    assert set(s["required"]) == set(s["properties"]) == {"checklist", "rationale", "scene_a_fault", "chart_no", "chart_a_is", "confidence", "cited_rules"}
+    assert set(s["required"]) == set(s["properties"]) == {"checklist", "rationale", "assumed_facts", "scene_a_fault", "chart_no", "chart_a_is", "confidence", "cited_rules"}
     item = s["$defs"]["ChecklistItem"]
     assert item["additionalProperties"] is False and set(item["required"]) == {"item", "finding"}
     dumped = json.dumps(s)

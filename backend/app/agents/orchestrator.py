@@ -99,12 +99,23 @@ CLARIFY_PROMPT = (
     "\"신호위반이었나요?\"처럼 법적 결론을 묻거나 용어로 결과를 암시하지 마세요.\n"
     "- 보기(label)는 사실만 적고 과실비율·도표번호·\"유리/불리\" 같은 암시를 쓰지 마세요. 보기 길이와 어조를 비슷하게 하세요.\n"
     "- 보기는 서로 겹치지 않게 2~4개. \"모름\"은 시스템이 추가하므로 쓰지 마세요.\n"
+    "- 보기는 그 사실이 취할 수 있는 경우를 **빠짐없이**, 사용자에게 유리한 경우와 불리한 경우를 모두 포함해 만드세요 "
+    "(예: 신호를 묻는다면 내 신호가 녹색인 경우도 반드시 포함). 위원들이 가정한 사실이 있으면 그 사실을 우선 질문으로 만드세요.\n"
+    "- 질문과 보기는 일반 운전자가 읽는 문장으로 쓰세요. 도표번호, \"정황 A/B\", \"도표\", \"과실\", \"비율\" 같은 내부 용어는 쓰지 말고 "
+    "\"내 차량\"·\"상대 차량\"으로 부르세요.\n"
     "- 보기마다 그 답이 맞을 때의 도표번호(chart_no)와 결과를 적습니다. 도표번호는 [인용 도표 상세]에 있는 것만 쓰세요.\n"
     "- scene_a_fault: 그 보기가 맞을 때 **정황의 A(나의 차량)** 입장의 최종 과실비율 (도표의 A 기준이 아니라 정황 기준). "
     "나의 차량이 도표의 A 인지 B 인지 먼저 대응시킨 뒤 계산하세요.\n"
     "- evidence: 그 사실을 확인할 수 있는 증거 (블랙박스, 신호 주기 기록, 경찰 조사 등)를 적습니다.\n"
     "- 주어진 [인용 도표 상세] 밖의 도표번호·비율을 만들어 쓰지 마세요."
 )
+
+
+import re
+
+# 사용자에게 보이는 질문/보기에 있으면 안 되는 표현: 도표번호, 내부 용어, 과실·비율, 퍼센트
+QUESTION_LEAK = re.compile(r"차\s?\d+\s?-\s?\d+|도표|과실|비율|%|퍼센트")
+LABEL_LEAK = re.compile(r"차\s?\d+\s?-\s?\d+|도표|정황|과실|비율|%|퍼센트|\b[AB]\b")
 
 
 def ambiguity_signals(reviews) -> list[str]:
@@ -119,12 +130,15 @@ def ambiguity_signals(reviews) -> list[str]:
         signals.append("위원 간 과실비율 차이가 있음")
     if any(r.warnings for r in reviews):
         signals.append("위원 평가에 경고가 있음")
+    if any(r.assumed_facts for r in reviews):
+        signals.append("위원이 정황에 없는 사실을 가정함")
     return signals
 
 
 def _format_review_summary(reviews) -> str:
     return "\n".join(
-        f"- {r.perspective} (확신 {r.confidence}): 도표 {r.chart_no or '-'}, 정황 A 과실 {r.scene_a_fault}\n  근거: {r.rationale.strip()[:300]}"
+        f"- {r.perspective} (확신 {r.confidence}): 도표 {r.chart_no or '-'}, 정황 A 과실 {r.scene_a_fault}\n"
+        f"  가정한 사실: {'; '.join(r.assumed_facts) or '없음'}\n  근거: {r.rationale.strip()[:300]}"
         for r in reviews
     )
 
@@ -169,6 +183,12 @@ async def plan_clarification(llm, context: dict[str, Any]):
         return [], "", warnings
     if len({o.label.strip() for o in q.options}) < len(q.options):
         warnings.append("질문 단계: 보기가 중복되어 질문을 생략했습니다")
+        return [], "", warnings
+
+    # 사용자에게 보이는 문장에 내부 용어·도표번호·과실 수치가 새면 질문을 버린다 (결과 숨김 원칙을 코드로 강제)
+    leaks = [t for t in [q.question] if QUESTION_LEAK.search(t)] + [o.label for o in q.options if LABEL_LEAK.search(o.label)]
+    if leaks:
+        warnings.append(f"질문 단계: 질문·보기에 내부 용어나 수치가 섞여 질문을 생략했습니다 ('{leaks[0][:40]}')")
         return [], "", warnings
 
     faults = [o.scene_a_fault for o in q.options]

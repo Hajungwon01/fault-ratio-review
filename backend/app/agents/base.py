@@ -71,9 +71,10 @@ class ReviewerAgent(BaseAgent):
         "도표의 'A=…/B=…' 정의와 정황을 대조해 `도표 A = 정황 A/B` 대응을 확인하세요. "
         "A/B 에이전트가 이 대응을 틀렸다면 그 주장은 따르지 마세요.\n"
         "- **숫자는 맨 마지막에 정하세요.** JSON 필드 순서대로 먼저 checklist, rationale 로 판단을 끝낸 뒤 "
-        "scene_a_fault, chart_no, chart_a_is 를 채우세요. 근거 문장과 숫자가 모순되면 안 됩니다.\n"
+        "assumed_facts, scene_a_fault, chart_no, chart_a_is 를 채우세요. 근거 문장과 숫자가 모순되면 안 됩니다.\n"
         "- scene_a_fault: **정황의 A(나의 차량)** 입장의 최종 과실비율(0~100 정수). 최종 결론이며, 도표의 A/B 가 아니라 "
         "**정황의 A/B** 기준입니다. B 과실은 100 에서 뺀 값이라 적지 않습니다.\n"
+        "- assumed_facts: 판단에 필요하지만 **정황에 적혀 있지 않아 가정한 사실**을 모두 적으세요 (예: 도표의 (가)(나)(다) 경우를 가르는 상대 방향 신호, 신호 유무, 누가 먼저 진입했는지). 정황만으로 도표와 경우가 확정되면 빈 목록입니다. 가정을 숨기지 마세요 — 이 목록은 사용자에게 사실을 확인하는 질문의 재료가 됩니다.\n"
         "- chart_no: 적용한 도표번호 (적용하지 않았으면 빈 문자열). "
         "chart_a_is: 도표 안의 A차량이 정황의 A(나의 차량)이면 \"A\", 정황의 B(상대 차량)이면 \"B\", 도표를 적용하지 않았으면 \"none\". "
         "시스템이 이 값과 도표의 기본 과실비율로 scene_a_fault 가 말이 되는지 확인합니다.\n"
@@ -106,6 +107,7 @@ class ReviewerAgent(BaseAgent):
             mock={
                 "checklist": [],
                 "rationale": f"[MOCK {self.perspective}] 실제 LLM 이 연결되지 않아 자리표시 평가를 반환합니다.",
+                "assumed_facts": [],
                 "scene_a_fault": 50,
                 "chart_no": "",
                 "chart_a_is": "none",
@@ -127,6 +129,7 @@ class ReviewerAgent(BaseAgent):
             chart_no=verdict.chart_no.strip(),
             chart_a_is=verdict.chart_a_is,
             scene_a_fault=verdict.scene_a_fault,
+            assumed_facts=[x.strip() for x in verdict.assumed_facts if x.strip()],
             warnings=problems,
         )
 
