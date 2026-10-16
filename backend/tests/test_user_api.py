@@ -74,8 +74,9 @@ def test_question_response_hides_charts_faults_and_internal_fields(client):
     assert all(set(o) == {"id", "label"} for o in body["question"]["options"])
     assert forbidden_in(json.dumps(body, ensure_ascii=False)) == []
     labels = [o["label"] for o in body["question"]["options"]]
-    assert labels[-1].startswith("모름") and body["question"]["options"][-1]["id"] == -1
-    assert set(labels[:-1]) == {"녹색 신호였다", "적색 신호였다", "점멸 신호였다"}
+    assert labels[-2].startswith("모름") and body["question"]["options"][-2]["id"] == -1
+    assert labels[-1].startswith("위의 보기에 해당하는 것이 없음") and body["question"]["options"][-1]["id"] == -2
+    assert set(labels[:-2]) == {"녹색 신호였다", "적색 신호였다", "점멸 신호였다"}
 
 
 def test_without_question_result_is_returned_with_range_and_disclaimer(client):
@@ -304,3 +305,21 @@ def test_without_question_uses_pipeline_user_summary_when_valid(client):
     assert start(client).json()["result"]["summary"] == rep.user_summary
     rep.user_summary = "위원들이 일치했습니다."
     assert start(client).json()["result"]["summary"].startswith("이 사고는 '")        # 검증 실패 → 코드 문장
+
+
+# ---------- 해당 없음 ----------
+def test_other_answer_returns_full_range_and_warns(client, monkeypatch):
+    llm = with_llm(client, monkeypatch, reply=GOOD_SUMMARY)
+    body = start(client).json()
+    r = client.post(f"/v1/assess/{body['session_id']}/answer", json={"option_id": -2, "seed": body["question"]["seed"]})
+    res = r.json()["result"]
+    assert (res["my_fault_low"], res["my_fault_high"]) == (0, 100) and res["chart_basis"] == []
+    assert "범위를 좁히지 못했습니다" in res["summary"] and res["uncertain"] is True
+    assert res["evidence_to_check"] == ["블랙박스 영상, 신호 주기 기록"] and llm.calls == []      # 모델 호출 없음, 보기별 결과 비공개
+
+
+def test_option_ids_outside_the_known_special_values_are_rejected(client):
+    body = start(client).json()
+    for bad in (-3, 3, 99):
+        r = client.post(f"/v1/assess/{body['session_id']}/answer", json={"option_id": bad, "seed": body["question"]["seed"]})
+        assert r.status_code == 422 and r.json()["detail"]["code"] == "invalid_option"

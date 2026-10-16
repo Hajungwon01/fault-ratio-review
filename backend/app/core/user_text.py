@@ -12,9 +12,12 @@ from app.models.user_schemas import ChartBasis
 
 MAX_SENTENCES = 6
 MAX_LAWS = 3
-UNKNOWN_SUMMARY = "정황에 없는 사실에 따라 결과가 달라질 수 있어 가능한 범위로 표시합니다."
+UNKNOWN_SUMMARY = "정황에 없는 사실에 따라 결과가 달라질 수 있어, 질문의 보기에 있던 경우의 범위로 표시합니다. 보기에 없는 경우는 이 범위에 포함되지 않습니다."
+OTHER_SUMMARY = "질문의 보기에 해당하는 경우가 없어 범위를 좁히지 못했습니다. 표시된 범위는 가능한 전체이며, 아래 증거를 확인하거나 보험사·전문가에게 문의해 주세요."
 
 _CHART_NO = re.compile(r"차\s?\d+\s?-\s?\d+")
+_BRACKET_LABEL = re.compile(r"\[[^\]\n]{1,15}\]")     # 프롬프트의 섹션 이름("[적용한 기준표]" 등)이 문장에 새는 것
+_ANSWER_MENTION = re.compile(r"고르신\s*답변|답변을\s*기준|답변하신")
 _INTERNAL_TERMS = re.compile(r"정황\s?[AB]|도표\s?[AB]|위원|확신|플래그|가정|chart|scene")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?。])\s+|\n+")
 
@@ -66,8 +69,8 @@ def _numbers(text: str) -> set[int]:
     return {int(n) for n in re.findall(r"\d+", _CHART_NO.sub("", text))}
 
 
-def validate_user_summary(text: str, basis: list[ChartBasis], low: int, high: int) -> list[str]:
-    """모델이 쓴 사용자용 설명의 문제 목록 (비어 있으면 통과)."""
+def validate_user_summary(text: str, basis: list[ChartBasis], low: int, high: int, *, answered: bool = False) -> list[str]:
+    """모델이 쓴 사용자용 설명의 문제 목록 (비어 있으면 통과). answered 는 사용자가 질문에 답한 경우."""
     text = (text or "").strip()
     if not text:
         return ["비어 있음"]
@@ -87,6 +90,10 @@ def validate_user_summary(text: str, basis: list[ChartBasis], low: int, high: in
     if bad_nums:
         problems.append(f"주어지지 않은 숫자 {sorted(bad_nums)}")
 
+    if _BRACKET_LABEL.search(text):
+        problems.append("대괄호 표기(프롬프트 섹션 이름 노출)")
+    if not answered and _ANSWER_MENTION.search(text):
+        problems.append("답변하지 않았는데 답변을 언급")
     if (m := _INTERNAL_TERMS.search(text)):
         problems.append(f"내부 용어 '{m.group(0)}'")
     if len([s for s in _SENTENCE_SPLIT.split(text) if s.strip()]) > MAX_SENTENCES:
@@ -96,7 +103,7 @@ def validate_user_summary(text: str, basis: list[ChartBasis], low: int, high: in
 
 def choose_summary(model_text: str, basis: list[ChartBasis], low: int, high: int, *, answered: bool = False) -> str:
     """모델 문장이 검증을 통과하면 그것을, 아니면 코드 문장을 쓴다."""
-    if model_text and not validate_user_summary(model_text, basis, low, high):
+    if model_text and not validate_user_summary(model_text, basis, low, high, answered=answered):
         return model_text.strip()
     return fallback_summary(basis, low, high, answered=answered)
 

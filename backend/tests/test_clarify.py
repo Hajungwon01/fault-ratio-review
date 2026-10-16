@@ -5,7 +5,7 @@ import json
 import pytest
 
 from app.agents.orchestrator import CLARIFY_MIN_DIFF, plan_clarification
-from app.core.clarify import UNKNOWN_ID, UNKNOWN_LABEL, resolve, user_view
+from app.core.clarify import OTHER_ID, OTHER_LABEL, UNKNOWN_ID, UNKNOWN_LABEL, resolve, user_view
 from app.core.llm_client import LLMClient
 from app.core.pipeline import FaultAssessmentPipeline
 from app.models.schemas import AccidentInput, ClarifyingQuestion, QuestionOption, ReviewScore
@@ -43,9 +43,10 @@ def test_user_view_always_ends_with_unknown_and_shuffles_by_seed():
     q = question()
     assert user_view(q, seed=7) == user_view(q, seed=7)           # 같은 seed 면 같은 순서
     v = user_view(q, seed=7)
-    assert v["options"][-1] == {"id": UNKNOWN_ID, "label": UNKNOWN_LABEL}
-    assert [o["id"] for o in v["options"][:-1]] == [0, 1, 2]      # id 는 화면 위치
-    orders = {tuple(o["label"] for o in user_view(q, seed=s)["options"][:-1]) for s in range(30)}
+    assert v["options"][-2] == {"id": UNKNOWN_ID, "label": UNKNOWN_LABEL}
+    assert v["options"][-1] == {"id": OTHER_ID, "label": OTHER_LABEL}          # 시스템이 붙이는 두 선택지는 항상 맨 끝
+    assert [o["id"] for o in v["options"][:-2]] == [0, 1, 2]      # id 는 화면 위치
+    orders = {tuple(o["label"] for o in user_view(q, seed=s)["options"][:-2]) for s in range(30)}
     assert len(orders) > 1                                         # seed 에 따라 순서가 바뀐다
     assert isinstance(user_view(q)["seed"], int)                   # seed 미지정이면 무작위로 만든다
 
@@ -55,7 +56,7 @@ def test_user_view_always_ends_with_unknown_and_shuffles_by_seed():
 def test_resolve_maps_displayed_position_back_to_the_chosen_option(seed):
     q = question()
     v = user_view(q, seed=seed)
-    for shown in v["options"][:-1]:
+    for shown in v["options"][:-2]:
         r = resolve(q, shown["id"], seed)
         chosen = next(o for o in q.options if o.label == shown["label"])
         assert r.scene_a_low == r.scene_a_high == chosen.scene_a_fault and r.chart_no == chosen.chart_no
@@ -399,3 +400,14 @@ def test_note_groups_options_of_the_same_chart():
     questions, note, _ = run_plan(q)
     assert questions == [] and "차2-6 적용 시 A 10~20" in note and note.count("차2-6") == 1
     assert "경우에 따라 비율이 조금 달라질 수 있으나" in note and "적용 도표가 달라질 수 있으나" not in note
+
+
+# ---------- '해당 없음': 보기가 모든 경우를 덮지 못할 때 모름의 낙관적 범위를 보여 주지 않는다 (실측 D14) ----------
+def test_other_answer_does_not_narrow_the_range():
+    q = question()                                          # 보기 값 0 / 10 / 50 — 가장 불리한 경우가 빠진 질문
+    other = resolve(q, OTHER_ID, seed=3)
+    assert (other.scene_a_low, other.scene_a_high, other.chart_no, other.kind) == (0, 100, None, "other")
+    assert "해당하는 것이 없다고" in other.statement and other.evidence == q.evidence
+    unknown = resolve(q, UNKNOWN_ID, seed=3)
+    assert (unknown.scene_a_low, unknown.scene_a_high, unknown.kind) == (0, 50, "unknown")       # 모름은 보기 안의 범위만
+    assert "보기에 있던 경우의 범위" in unknown.statement

@@ -56,5 +56,5 @@ class AssessResponse(BaseModel):
 
 
 class AnswerRequest(BaseModel):
-    option_id: Optional[int] = Field(None, description="고른 보기의 id. 모름이면 -1 또는 null")
+    option_id: Optional[int] = Field(None, description="고른 보기의 id. 모름은 -1 또는 null, 해당하는 보기가 없으면 -2")
     seed: int

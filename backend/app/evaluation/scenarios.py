@@ -163,7 +163,7 @@ def check_user_summary(report) -> list[str]:
     if not report.user_summary:
         return ["설명 없음"]
     low, high = reviewers_range(report)
-    return validate_user_summary(report.user_summary, basis_for(report, None), low, high)
+    return validate_user_summary(report.user_summary, basis_for(report, None), low, high, answered=False)
 
 
 def format_clarification(report) -> str:

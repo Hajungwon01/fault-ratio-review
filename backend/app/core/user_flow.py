@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import logging
 
-from app.core.clarify import UNKNOWN_ID, ClarifiedResult, resolve, user_view
+from app.core.clarify import OTHER_ID, UNKNOWN_ID, ClarifiedResult, resolve, user_view
 from app.core.pipeline import FaultAssessmentPipeline
 from app.core.sessions import Session, SessionStore
 from app.core.user_summary import basis_for, reviewers_range, unconfirmed_facts, write_user_summary
-from app.core.user_text import UNKNOWN_SUMMARY, choose_summary
+from app.core.user_text import OTHER_SUMMARY, UNKNOWN_SUMMARY, choose_summary
 from app.models.schemas import AccidentInput, FaultReport
 from app.models.user_schemas import AssessResponse, ChartBasis, UserOption, UserQuestion, UserResult
 
@@ -44,7 +44,7 @@ def build_result(report: FaultReport, resolved: ClarifiedResult | None = None, m
 
     basis = basis_for(report, resolved)
     if resolved is not None and resolved.chart_no is None:
-        summary = UNKNOWN_SUMMARY
+        summary = OTHER_SUMMARY if resolved.kind == "other" else UNKNOWN_SUMMARY
     else:
         summary = choose_summary(model_summary, basis, low, high, answered=resolved is not None)
 
@@ -55,7 +55,7 @@ def build_result(report: FaultReport, resolved: ClarifiedResult | None = None, m
         chart_basis=basis,
         evidence_to_check=evidence,
         other_possibilities=report.clarification_note,
-        uncertain=report.needs_precise_review,
+        uncertain=report.needs_precise_review or (resolved is not None and resolved.kind == "other"),
         disclaimer=DISCLAIMER,
     )
 
@@ -86,7 +86,7 @@ class AssessmentService:
     async def answer(self, session_id: str, option_id: int | None, seed: int) -> AssessResponse:
         session = self.store.get(session_id)  # SessionNotFound / AlreadyAnswered
         n = len(session.question.options)
-        if seed != session.seed or (option_id is not None and option_id != UNKNOWN_ID and not 0 <= option_id < n):
+        if seed != session.seed or (option_id is not None and option_id not in (UNKNOWN_ID, OTHER_ID) and not 0 <= option_id < n):
             raise InvalidOption()
         resolved = resolve(session.question, option_id, session.seed)
         model_summary = await self._answer_summary(session, resolved)

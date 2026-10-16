@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import random
 import secrets
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -16,6 +16,10 @@ from app.models.schemas import ClarifyingQuestion
 
 UNKNOWN_ID = -1
 UNKNOWN_LABEL = "모름 / 확실하지 않음"
+# 보기가 모든 경우를 덮지 못할 수 있다(실측 D14: 가장 불리한 경우가 빠짐). 시스템이 '해당 없음'을 따로 붙이고,
+# 이것을 고르면 보기 안의 범위로 좁히지 않는다 — 보기에 없는 경우를 '모름'의 낙관적 범위로 잘못 보여 주지 않기 위해서다.
+OTHER_ID = -2
+OTHER_LABEL = "위의 보기에 해당하는 것이 없음"
 
 
 def _order(n: int, seed: int) -> list[int]:
@@ -34,6 +38,7 @@ def user_view(q: ClarifyingQuestion, seed: Optional[int] = None) -> dict:
     order = _order(len(q.options), seed)
     options = [{"id": pos, "label": q.options[orig].label} for pos, orig in enumerate(order)]
     options.append({"id": UNKNOWN_ID, "label": UNKNOWN_LABEL})
+    options.append({"id": OTHER_ID, "label": OTHER_LABEL})
     return {"seed": seed, "question": q.question, "options": options}
 
 
@@ -44,16 +49,23 @@ class ClarifiedResult(BaseModel):
     scene_a_high: int
     chart_no: Optional[str] = None  # 답이 정해졌을 때만 (모름이면 None)
     statement: str                  # "사용자 진술 기준 …" — 사실로 확정하지 않는다는 표기
+    kind: Literal["answered", "unknown", "other"] = "answered"
     evidence: str                   # 판단을 바꿀 수 있는 증거 안내
 
 
 def resolve(q: ClarifyingQuestion, answer_id: Optional[int], seed: int) -> ClarifiedResult:
     """사용자가 고른 보기(위치 id, 모름/미응답이면 None 또는 -1)를 반영한다. 모르면 가능한 모든 보기의 범위를 돌려준다."""
+    if answer_id == OTHER_ID:
+        return ClarifiedResult(
+            scene_a_low=0, scene_a_high=100, chart_no=None, kind="other",
+            statement=f"'{q.question}'의 보기에 해당하는 것이 없다고 답해 범위를 좁히지 않습니다",
+            evidence=q.evidence,
+        )
     if answer_id is None or answer_id == UNKNOWN_ID:
         faults = [o.scene_a_fault for o in q.options]
         return ClarifiedResult(
-            scene_a_low=min(faults), scene_a_high=max(faults), chart_no=None,
-            statement=f"'{q.question}'에 확실하지 않다고 답해 가능한 경우의 범위로 표시합니다",
+            scene_a_low=min(faults), scene_a_high=max(faults), chart_no=None, kind="unknown",
+            statement=f"'{q.question}'에 확실하지 않다고 답해 질문의 보기에 있던 경우의 범위로 표시합니다",
             evidence=q.evidence,
         )
     order = _order(len(q.options), seed)

@@ -39,8 +39,8 @@ GOOD = "고르신 답변을 기준으로 차2-2를 적용했습니다. 이 도�
 
 
 def test_valid_summary_passes():
-    assert validate_user_summary(GOOD, B, 0, 10) == []
-    assert validate_user_summary(GOOD.replace("차2-2", "차 2-2"), B, 0, 10) == []        # 공백이 섞인 도표번호도 같은 번호로 본다
+    assert validate_user_summary(GOOD, B, 0, 10, answered=True) == []
+    assert validate_user_summary(GOOD.replace("차2-2", "차 2-2"), B, 0, 10, answered=True) == []        # 공백이 섞인 도표번호도 같은 번호로 본다
 
 
 @pytest.mark.parametrize("text,expect", [
@@ -75,3 +75,25 @@ def test_fallback_summary_text_is_built_from_data_only():
     assert B[0].situation in s and "나 0 : 상대 100" in s and "0~10%" in s
     assert "하나로 정하지 못해" in fallback_summary([], 20, 20) and "20%" in fallback_summary([], 20, 20)
     assert "정황" not in UNKNOWN_SUMMARY.replace("정황에 없는", "")                                  # 모름 문장에 내부 용어 없음
+
+
+# ---------- 실측 D01·D03: 답하지 않았는데 "고르신 답변을 기준으로", 프롬프트 섹션 이름 노출 ----------
+def test_claiming_an_answer_when_there_was_none_is_rejected():
+    text = "고르신 답변을 기준으로 차2-2를 적용했습니다. 나의 과실은 0%로 보았습니다."
+    assert any("답변하지 않았는데" in p for p in validate_user_summary(text, B, 0, 0))
+    assert validate_user_summary(text, B, 0, 0, answered=True) == []
+    assert any("답변하지 않았는데" in p for p in validate_user_summary("답변을 기준으로 봤습니다. 나의 과실은 0%입니다.", B, 0, 0))
+    assert choose_summary(text, B, 0, 0).startswith("이 사고는")           # 질문이 없었으면 코드 문장으로 대체
+
+
+def test_prompt_section_labels_leaking_into_the_text_are_rejected():
+    for text in ("[적용한 기준표]에서는 직진 차량의 사고를 다룹니다. 나의 과실은 0%입니다.", "[최종 결론] 나의 과실은 0%입니다."):
+        assert any("대괄호" in p for p in validate_user_summary(text, B, 0, 0))
+    assert validate_user_summary("차2-2를 적용했고 나의 과실은 0%입니다 (신호 상태에 따라 달라질 수 있어요).", B, 0, 0) == []   # 소괄호는 허용
+
+
+def test_other_and_unknown_summaries_state_their_limits():
+    from app.core.user_text import OTHER_SUMMARY
+
+    assert "보기에 없는 경우는 이 범위에 포함되지 않습니다" in UNKNOWN_SUMMARY
+    assert "범위를 좁히지 못했습니다" in OTHER_SUMMARY and "증거" in OTHER_SUMMARY

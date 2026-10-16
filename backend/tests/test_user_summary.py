@@ -108,3 +108,12 @@ def test_pipeline_writes_the_summary_only_when_no_question_is_needed(monkeypatch
     monkeypatch.setattr(pl, "plan_clarification", question_plan)
     r = asyncio.run(FaultAssessmentPipeline().run(AccidentInput(description=DESC)))
     assert r.needs_clarification and r.user_summary == "" and calls == []                       # 질문이 필요하면 답변 뒤에 쓴다
+
+
+def test_prompt_mentions_the_answer_only_inside_the_statement_block():
+    from app.core.user_summary import USER_SUMMARY_PROMPT, build_prompt
+
+    assert "고르신 답변" not in USER_SUMMARY_PROMPT                      # 시스템 규칙에 문구를 넣으면 모델이 답변이 없는데도 따라 썼다 (실측)
+    assert "[사용자 진술]이 없으면 사용자가 무언가를 답했다고 쓰지 마세요" in USER_SUMMARY_PROMPT and "대괄호" in USER_SUMMARY_PROMPT
+    assert "고르신 답변" not in build_prompt("정황", B, 0, 0)
+    assert "고르신 답변을 기준으로" in build_prompt("정황", B, 0, 0, statement="사용자 진술 기준: 녹색")
