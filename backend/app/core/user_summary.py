@@ -19,11 +19,11 @@ USER_SUMMARY_PROMPT = (
     "당신은 교통사고 과실비율 확인 서비스에서 사고 당사자에게 결과를 설명하는 도우미입니다. 판정을 바꾸지 말고 주어진 결과를 쉽게 풀어 쓰세요.\n\n"
     "[규칙]\n"
     "- 3~5문장의 한국어 문단 하나.\n"
-    "- 이 정황에 [적용한 기준표]가 왜 맞는지 정황의 내용과 연결해 설명하세요.\n"
-    "- [확인되지 않은 사실]이 있으면 그 사실에 따라 결과가 달라질 수 있다고 쉬운 말로 알려 주세요. 있지 않은 사실을 단정하지 마세요.\n"
-    "- [사용자 진술]이 없으면 사용자가 무언가를 답했다고 쓰지 마세요.\n"
-    "- [사고 정황]처럼 대괄호로 된 항목 이름은 문장에 쓰지 마세요.\n"
-    "- 숫자는 [적용한 기준표]와 [최종 결론]에 있는 값만 쓰세요. 도표번호도 주어진 것만 쓰세요. 판례나 법조항을 새로 만들어 쓰지 마세요.\n"
+    "- 이 정황에 ■ 적용한 기준표가 왜 맞는지 정황의 내용과 연결해 설명하세요.\n"
+    "- ■ 확인되지 않은 사실이 있으면 그 사실에 따라 결과가 달라질 수 있다고 쉬운 말로 알려 주세요. 있지 않은 사실을 단정하지 마세요.\n"
+    "- ■ 사용자 진술이 없으면 사용자가 무언가를 답했다고 쓰지 마세요.\n"
+    "- '■ 사고 정황'처럼 ■로 시작하는 항목 이름이나 대괄호([ ])로 된 표기는 문장에 쓰지 마세요.\n"
+    "- 숫자는 ■ 적용한 기준표와 ■ 최종 결론에 있는 값만 쓰세요. 도표번호도 주어진 것만 쓰세요. 판례나 법조항을 새로 만들어 쓰지 마세요.\n"
     "- 검토 과정이나 내부 절차(누가 어떻게 검토했는지, 검증, 오류 지적)는 설명하지 마세요. 결과와 이유만 쓰세요.\n"
     "- '내 차량', '상대 차량'으로 쓰세요. '위원', '검토위원', '정황 A/B', '도표 A/B', '확신', '플래그', '가정' 같은 말은 쓰지 마세요."
 )
@@ -61,20 +61,20 @@ def unconfirmed_facts(report: FaultReport) -> list[str]:
 
 def build_prompt(accident_text: str, basis: list[ChartBasis], low: int, high: int,
                  *, unconfirmed: list[str] | None = None, statement: str = "") -> str:
-    blocks = [f"[사고 정황]\n{accident_text}"]
+    blocks = [f"■ 사고 정황\n{accident_text}"]
     if statement:
         blocks.append(
-            f"[사용자 진술]\n{statement}\n(사용자가 고른 답변입니다. 확인된 사실이 아니라 진술이므로 \"고르신 답변을 기준으로\"처럼 진술 기준임을 밝혀 쓰세요.)"
+            f"■ 사용자 진술\n{statement}\n(사용자가 고른 답변입니다. 확인된 사실이 아니라 진술이므로 \"고르신 답변을 기준으로\"처럼 진술 기준임을 밝혀 쓰세요.)"
         )
     if basis:
         lines = []
         for b in basis:
             laws = " / ".join(b.laws) or "(없음)"
             lines.append(f"{b.chart_no} {b.label}\n도표 상황: {b.situation}\n기본 과실비율: 나 {b.my_base} : 상대 {b.other_base}\n관련 법규: {laws}")
-        blocks.append("[적용한 기준표]\n" + "\n\n".join(lines))
+        blocks.append("■ 적용한 기준표\n" + "\n\n".join(lines))
     if unconfirmed:
-        blocks.append("[확인되지 않은 사실]\n" + "\n".join(f"- {f}" for f in unconfirmed))
-    blocks.append(f"[최종 결론]\n나의 과실 {_range_text(low, high)}, 상대 {_range_text(100 - high, 100 - low)}")
+        blocks.append("■ 확인되지 않은 사실\n" + "\n".join(f"- {f}" for f in unconfirmed))
+    blocks.append(f"■ 최종 결론\n나의 과실 {_range_text(low, high)}, 상대 {_range_text(100 - high, 100 - low)}")
     return "\n\n".join(blocks) + "\n"
 
 

@@ -47,16 +47,16 @@ def report(reviews):
 # ---------- 프롬프트: 내부 정보 없음 ----------
 def test_prompt_has_only_scene_chart_range_and_unconfirmed_facts():
     p = build_prompt("사고 상황 설명: 직진 중 충돌", B, 0, 10, unconfirmed=["상대 방향 신호가 녹색이었다"])
-    for must in ("[사고 정황]", "[적용한 기준표]", "차2-2", "기본 과실비율: 나 0 : 상대 100", "[확인되지 않은 사실]", "- 상대 방향 신호가 녹색이었다", "나의 과실 0~10%", "상대 90~100%"):
+    for must in ("■ 사고 정황", "■ 적용한 기준표", "차2-2", "기본 과실비율: 나 0 : 상대 100", "■ 확인되지 않은 사실", "- 상대 방향 신호가 녹색이었다", "나의 과실 0~10%", "상대 90~100%"):
         assert must in p
     for internal in ("위원", "사실검증", "인용 오류", "확신", "플래그", "reviewer"):
         assert internal not in p
-    assert "[사용자 진술]" not in p and "[확인되지 않은 사실]" in p
+    assert "■ 사용자 진술" not in p and "■ 확인되지 않은 사실" in p
 
 
 def test_prompt_with_statement_and_without_unconfirmed():
     p = build_prompt("정황", B, 10, 10, statement="사용자 진술 기준: 질문 → 녹색 신호였다")
-    assert "[사용자 진술]\n사용자 진술 기준: 질문 → 녹색 신호였다" in p and "[확인되지 않은 사실]" not in p and "나의 과실 10%" in p
+    assert "■ 사용자 진술\n사용자 진술 기준: 질문 → 녹색 신호였다" in p and "■ 확인되지 않은 사실" not in p and "나의 과실 10%" in p
 
 
 def test_system_prompt_rules():
@@ -114,6 +114,6 @@ def test_prompt_mentions_the_answer_only_inside_the_statement_block():
     from app.core.user_summary import USER_SUMMARY_PROMPT, build_prompt
 
     assert "고르신 답변" not in USER_SUMMARY_PROMPT                      # 시스템 규칙에 문구를 넣으면 모델이 답변이 없는데도 따라 썼다 (실측)
-    assert "[사용자 진술]이 없으면 사용자가 무언가를 답했다고 쓰지 마세요" in USER_SUMMARY_PROMPT and "대괄호" in USER_SUMMARY_PROMPT
+    assert "■ 사용자 진술이 없으면 사용자가 무언가를 답했다고 쓰지 마세요" in USER_SUMMARY_PROMPT and "대괄호" in USER_SUMMARY_PROMPT
     assert "고르신 답변" not in build_prompt("정황", B, 0, 0)
     assert "고르신 답변을 기준으로" in build_prompt("정황", B, 0, 0, statement="사용자 진술 기준: 녹색")
