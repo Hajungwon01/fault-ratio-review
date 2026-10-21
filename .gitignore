@@ -25,3 +25,6 @@ backend/.cache/
 
 # 시나리오 평가 결과(모델 출력 포함)
 backend/eval/results/
+
+# 포트폴리오용 화면 캡처 (저장소에 올리지 않는다)
+docs/screenshots/
