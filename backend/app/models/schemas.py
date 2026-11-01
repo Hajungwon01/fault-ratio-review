@@ -181,6 +181,13 @@ class ClarificationPlan(BaseModel):
     questions: list[ClarifyingQuestion] = Field(default_factory=list, max_length=1)
 
 
+class OptionCheck(BaseModel):
+    """질문 보기가 사고 정황에 적힌 사실과 모순되는지 점검한 결과 (질문 품질 검증용, 사용자에게 보이지 않는다)."""
+
+    conflicting: list[int] = Field(default_factory=list, description="정황에 적힌 사실과 모순되는 보기의 번호(0부터). 없으면 빈 목록")
+    reason: str = Field("", description="모순으로 본 이유 한 문장")
+
+
 class FaultReport(BaseModel):
     """진행 에이전트가 생성하는 최종 "몇 대 몇" 심사 리포트."""
 

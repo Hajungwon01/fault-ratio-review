@@ -149,6 +149,9 @@ CLARIFY_PROMPT = (
     "(예: 신호를 묻는다면 내 신호가 녹색인 경우도 반드시 포함). 위원들이 가정한 사실이 있으면 그 사실을 우선 질문으로 만드세요.\n"
     "- 질문과 보기는 일반 운전자가 읽는 문장으로 쓰세요. 도표번호, \"정황 A/B\", \"도표\", \"과실\", \"비율\" 같은 내부 용어는 쓰지 말고 "
     "\"내 차량\"·\"상대 차량\"으로 부르세요.\n"
+    "- **보기는 [사고 정황]에 적힌 사실(진행 방향, 차량의 동작, 위치)과 모순되면 안 됩니다.** 정황이 \"직진\"이라고 했으면 \"좌회전\" 보기를, "
+    "\"내 차량\"이라고 한 쪽의 동작을 바꾸는 보기를 만들지 마세요. 정황에 적히지 않은 것(예: 신호 상태, 신호등 유무)만 보기로 나눕니다. "
+    "신호를 묻는다면 신호등이 없는 경우, 양쪽 모두 정상 신호인 경우도 빠뜨리지 마세요.\n"
     "- 보기마다 그 답이 맞을 때의 도표번호(chart_no)와 결과를 적습니다. 도표번호는 [보기에 쓸 수 있는 도표번호]에 있는 것만 쓰세요.\n"
     "- scene_a_fault: 그 보기가 맞을 때 **정황의 A(나의 차량)** 입장의 최종 과실비율 (도표의 A 기준이 아니라 정황 기준). "
     "나의 차량이 도표의 A 인지 B 인지 먼저 대응시킨 뒤 계산하세요.\n"
@@ -158,6 +161,14 @@ CLARIFY_PROMPT = (
 
 
 import re
+
+OPTION_CHECK_PROMPT = (
+    "당신은 사용자에게 보여 줄 질문 보기를 점검하는 검수자입니다. [사고 정황]에 적힌 사실(진행 방향, 차량의 동작, 위치, 신호 정보)과 "
+    "**모순되는 보기**의 번호를 찾으세요.\n"
+    "- 모순: 정황이 직진이라고 했는데 보기가 좌회전을 전제하는 경우처럼, 정황에서 이미 정해진 사실을 바꾸는 보기.\n"
+    "- 모순이 아님: 정황에 적히지 않은 사실(신호 색, 신호등 유무 등)을 보기가 정하는 것은 정상입니다.\n"
+    "보기 번호는 0부터이며, 모순이 없으면 conflicting 을 빈 목록으로 두세요."
+)
 
 # 사용자에게 보이는 질문/보기에 있으면 안 되는 표현: 도표번호, 내부 용어, 과실·비율, 퍼센트
 QUESTION_LEAK = re.compile(r"차\s?\d+\s?-\s?\d+|도표|과실|비율|%|퍼센트")
@@ -196,6 +207,26 @@ def _format_review_summary(reviews) -> str:
         f"  가정한 사실: {'; '.join(r.assumed_facts) or '없음'}\n  근거: {r.rationale.strip()[:300]}"
         for r in reviews
     )
+
+
+async def _drop_conflicting_options(llm, accident: str, q):
+    """정황과 모순되는 보기를 제외한다. 반환: (질문 또는 None(폐기), 진단 문구)."""
+    from app.models.schemas import OptionCheck
+
+    listing = "\n".join(f"{i}. {o.label}" for i, o in enumerate(q.options))
+    prompt = f"[사고 정황]\n{accident}\n\n[질문]\n{q.question}\n\n[보기]\n{listing}\n"
+    try:
+        check = await llm.complete_json(OPTION_CHECK_PROMPT, prompt, OptionCheck, mock={"conflicting": []})
+    except Exception as exc:  # noqa: BLE001 - 점검 실패는 질문 폐기로 처리
+        return None, f"폐기: 보기 점검 호출 실패 ({type(exc).__name__})"
+    bad = {i for i in check.conflicting if 0 <= i < len(q.options)}
+    if not bad:
+        return q, "보기 점검: 모순 없음"
+    kept = [o for i, o in enumerate(q.options) if i not in bad]
+    note = f"보기 점검: 정황과 모순된 보기 {sorted(bad)} 제외 ({check.reason[:60]})"
+    if len(kept) < 2:
+        return None, note + " → 남은 보기 부족으로 폐기"
+    return q.model_copy(update={"options": kept}), note
 
 
 async def plan_clarification(llm, context: dict[str, Any]):
@@ -260,6 +291,15 @@ async def plan_clarification(llm, context: dict[str, Any]):
     if leaks:
         warnings.append(f"질문 단계: 질문·보기에 내부 용어나 수치가 섞여 질문을 생략했습니다 ('{leaks[0][:40]}')")
         log("폐기: 질문·보기에 내부 용어/수치 누출")
+        return [], "", warnings
+
+    # 보기가 정황에 적힌 사실과 모순되면(D14: 정황은 "직진 대 직진"인데 "상대 차량 좌회전" 보기) 그 보기를 제외한다.
+    # 코드로 판별할 수 없어 별도 점검 호출을 쓴다. 점검이 실패하면 질문을 내지 않는다(품질 확인 없는 질문을 사용자에게 보이지 않는다).
+    q, check_note = await _drop_conflicting_options(llm, context["accident_input"], q)
+    if check_note:
+        log(check_note)
+    if q is None:
+        warnings.append("질문 단계: 보기가 정황과 맞지 않아 질문을 생략했습니다")
         return [], "", warnings
 
     faults = [o.scene_a_fault for o in q.options]

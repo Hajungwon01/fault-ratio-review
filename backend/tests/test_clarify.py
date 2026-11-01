@@ -79,15 +79,21 @@ def test_resolve_rejects_out_of_range_choice():
 
 # ---------- 질문 생성 (모델 응답은 가짜) ----------
 class PlanLLM(LLMClient):
-    def __init__(self, plan):
+    def __init__(self, plan, conflicting=(), check_error=False):
         super().__init__()
         self.plan = plan
+        self.conflicting = list(conflicting)  # 보기 점검 호출이 "정황과 모순"이라고 답할 보기 번호
+        self.check_error = check_error
 
     @property
     def mock_mode(self):
         return False
 
     async def complete_json(self, system_prompt, user_prompt, model_cls, *, mock, max_attempts=3):
+        if model_cls.__name__ == "OptionCheck":
+            if self.check_error:
+                raise RuntimeError("boom")
+            return model_cls.model_validate({"conflicting": self.conflicting, "reason": "정황과 다른 동작"})
         return model_cls.model_validate(self.plan)
 
 
@@ -320,7 +326,7 @@ def test_planner_prompt_lists_allowed_numbers_and_candidate_details():
     class Spy(PlanLLM):
         async def complete_json(self, system_prompt, user_prompt, model_cls, *, mock, max_attempts=3):
             seen["prompt"] = user_prompt
-            return model_cls.model_validate({"questions": []})
+            return model_cls.model_validate({"questions": []} if model_cls.__name__ == "ClarificationPlan" else {})
 
     c = ctx()
     c["candidate_chart_numbers"] = ["차1-1", "차1-4"]
@@ -411,3 +417,44 @@ def test_other_answer_does_not_narrow_the_range():
     unknown = resolve(q, UNKNOWN_ID, seed=3)
     assert (unknown.scene_a_low, unknown.scene_a_high, unknown.kind) == (0, 50, "unknown")       # 모름은 보기 안의 범위만
     assert "보기에 있던 경우의 범위" in unknown.statement
+
+
+# ---------- 보기 점검: 정황과 모순되는 보기 제외 (실측 D14) ----------
+def run_plan_with(q, **kw):
+    return asyncio.run(plan_clarification(PlanLLM(plan_for(q), **kw), ctx()))
+
+
+def test_conflicting_option_is_dropped_but_question_kept():
+    out, note, warnings = run_plan_with(question(), conflicting=[0])      # 보기 3개 중 첫째 제외 → 둘째·셋째(10, 50)가 남아 질문 유지
+    assert len(out) == 1 and len(out[0].options) == 2
+    assert "녹색 직진 신호 또는 적색 신호였다" not in [o.label for o in out[0].options]
+
+
+def test_question_discarded_when_too_few_options_remain():
+    out, note, warnings = run_plan_with(question(), conflicting=[0, 1])   # 3개 중 2개 제외 → 1개 남음
+    assert out == [] and any("정황과 맞지 않아" in w for w in warnings)
+
+
+def test_question_discarded_when_check_call_fails():
+    out, note, warnings = run_plan_with(question(), check_error=True)      # 품질 확인 없는 질문은 내지 않는다
+    assert out == [] and any("정황과 맞지 않아" in w for w in warnings)
+
+
+def test_out_of_range_conflict_numbers_are_ignored():
+    out, note, warnings = run_plan_with(question(), conflicting=[7, -1])
+    assert len(out) == 1 and len(out[0].options) == len(question().options)
+
+
+def test_check_prompt_contains_scene_and_numbered_options():
+    seen = {}
+
+    class Spy(PlanLLM):
+        async def complete_json(self, system_prompt, user_prompt, model_cls, *, mock, max_attempts=3):
+            if model_cls.__name__ == "OptionCheck":
+                seen["p"] = user_prompt
+            return await super().complete_json(system_prompt, user_prompt, model_cls, mock=mock)
+
+    c = ctx()
+    c["accident_input"] = "내가 직진하다 충돌"
+    asyncio.run(plan_clarification(Spy(plan_for(question())), c))
+    assert "내가 직진하다 충돌" in seen["p"] and "0. " in seen["p"] and "1. " in seen["p"]
